@@ -18,6 +18,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 #include "Turnouts.h"
 #include "EEStore.h"
 #include "StringFormatter.h"
@@ -34,19 +35,25 @@ void Turnout::printAll(Print *stream){
 // print configuration of one turnout to stream
 void Turnout::print(Print *stream){
   if (data.tStatus & STATUS_PWM) {
-    int inactivePosition = (data.positionWord >> 4) & 0xfff;
-    int activePosition = ((data.positionWord & 0xf) << 8) | data.positionByte;
+    // Servo Turnout
+    int inactivePosition = (data.positionWord) & 0x1ff;
+    int activePosition = ((data.positionWord & 0x200) >> 1) | data.positionByte;
+    int profile = (data.positionWord >> 10) & 0x7;
     int pin = (data.tStatus & STATUS_PWMPIN);
     int vpin = pin+IODevice::firstServoVPin;
-    if (activePosition == 4095 && inactivePosition == 0) 
-      StringFormatter::send(stream, F("<H %d LED %d %d>\n"), data.id, vpin, 
-          (data.tStatus & STATUS_ACTIVE)!=0);
-    else
-      StringFormatter::send(stream, F("<H %d SERVO %d %d %d %d>\n"), data.id, vpin, 
-          activePosition, inactivePosition, (data.tStatus & STATUS_ACTIVE)!=0);
-  } else
+    StringFormatter::send(stream, F("<H %d SERVO %d %d %d %d %d>\n"), data.id, vpin, 
+      activePosition, inactivePosition, profile, (data.tStatus & STATUS_ACTIVE)!=0);
+  } else if (data.address == LCN_TURNOUT_ADDRESS) {
+    // LCN Turnout
+    StringFormatter::send(stream, F("<H %d LCN>"), data.id);
+  } else if (data.subAddress == VPIN_TURNOUT_SUBADDRESS) {
+    // VPIN Digital output
+    StringFormatter::send(stream, F("<H %d VPIN %d"), data.id, data.address);
+  } else {
+    // DCC Turnout
     StringFormatter::send(stream, F("<H %d DCC %d %d %d>\n"), data.id, data.address, 
         data.subAddress, (data.tStatus & STATUS_ACTIVE)!=0);
+  }
 }
 
 bool Turnout::activate(int n,bool state){
@@ -125,19 +132,20 @@ void Turnout::load(){
     EEPROM.get(EEStore::pointer(),data);
     if (data.tStatus & STATUS_PWM) {
       // Unpack PWM values
-      int inactivePosition = (data.positionWord >> 4) & 0xfff;
-      int activePosition = ((data.positionWord & 0xf) << 8) | data.positionByte;
+      int inactivePosition = (data.positionWord) & 0x1ff;
+      int activePosition = ((data.positionWord & 0x200) >> 1) | data.positionByte;
+      int profile = (data.positionWord >> 10) & 0x7;
       int pin = (data.tStatus & STATUS_PWMPIN);
       int vpin = pin+IODevice::firstServoVPin;
-      tt=createServo(data.id,vpin,activePosition, inactivePosition);
-    } else if (data.address==VPIN_TURNOUT_ADDRESS) 
+      tt=createServo(data.id,vpin,activePosition, inactivePosition, profile, (data.tStatus & STATUS_ACTIVE) ? 1 : 0);
+    } else if (data.subAddress==VPIN_TURNOUT_SUBADDRESS) 
       tt=create(data.id,data.subAddress);  // VPIN-based turnout
     else
       tt=createDCC(data.id,data.address,data.subAddress); // DCC/LCN-based turnout
     tt->data.tStatus=data.tStatus;
     EEStore::advance(sizeof(tt->data));
 #ifdef EESTOREDEBUG
-    tt->print(tt);
+    print(tt);
 #endif
   }
 }
@@ -152,7 +160,7 @@ void Turnout::store(){
 
   while(tt!=NULL){
 #ifdef EESTOREDEBUG
-    tt->print(tt);
+    print(tt);
 #endif
     EEPROM.put(EEStore::pointer(),tt->data);
     EEStore::advance(sizeof(tt->data));
@@ -166,16 +174,15 @@ void Turnout::store(){
 // Method for associating a turnout id with a virtual pin in IODevice space.
 // The actual creation and configuration of the pin must be done elsewhere,
 // e.g. in mySetup.h during startup of the CS.
-// TODO: Vpin is currently a byte so limited to 0-255.
 Turnout *Turnout::create(int id, VPIN vpin){
   Turnout *tt=create(id);
-  tt->data.address = VPIN_TURNOUT_ADDRESS;
+  tt->data.subAddress = VPIN_TURNOUT_SUBADDRESS;
   tt->data.tStatus=0;
   tt->data.subAddress = vpin;
   return(tt);
 }
 
-// Method for creating a DCC-controlled turnout.
+// Method for creating a DCC/LCN-controlled turnout.
 Turnout *Turnout::createDCC(int id, int add, int subAdd){
   Turnout *tt=create(id);
   tt->data.address=add;
@@ -186,18 +193,19 @@ Turnout *Turnout::createDCC(int id, int add, int subAdd){
 
 // Method for creating a PCA9685 PWM turnout.  Vpins are numbered from IODevice::firstServoVPIN
 // The pin used internally by the turnout is the number within this range.  So if firstServoVpin is 100,
-// then VPIN 100 is pin 0, VPIN 101 is pin 1 etc. up to VPIN 163 is pin 63.
-Turnout *Turnout::createServo(int id, byte vpin, int activePosition, int inactivePosition, int profile){
+// then VPIN 100 is pin 0, VPIN 101 is pin 1 etc. up to VPIN 163 is pin 63.  Servos generally operate 
+// over the range of 200-400 so the activePosition and inactivePosition are limited to 0-511 in range.
+Turnout *Turnout::createServo(int id, VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t initialState){
   int pin = vpin - IODevice::firstServoVPin;
   if (pin < 0 || pin >=64) return NULL; // Check valid range of servo pins
+  if (activePosition > 511 || inactivePosition > 511 || profile > 4) return NULL;
   Turnout *tt=create(id);
   tt->data.tStatus= STATUS_PWM | (pin &  STATUS_PWMPIN);
   // Pack active/inactive positions into available space.
-  tt->data.positionWord = (inactivePosition << 4) | (activePosition >> 8); 
-                                  // inactivePosition | high 4 bits of activePosition.
+  tt->data.positionWord = (profile << 10) | ((activePosition & 0x100) << 1) | inactivePosition; 
   tt->data.positionByte = activePosition & 0xff;  // low 8 bits of activeAngle.
   // Create PWM interface object 
-  Analogue::create(vpin, vpin, activePosition, inactivePosition, profile);
+  Analogue::create(vpin, vpin, activePosition, inactivePosition, profile, initialState);
   return(tt);
 }
 
@@ -206,17 +214,15 @@ Turnout *Turnout::createServo(int id, byte vpin, int activePosition, int inactiv
 // and <T id VPIN pin>
 Turnout *Turnout::create(int id, int params, int16_t p[]) {
   if (params == 5 && p[0] == 27709) { // <T id SERVO n n n n>
-    return createServo(id, p[1], p[2], p[3], p[4]);
+    return createServo(id, (VPIN)p[1], (uint16_t)p[2], (uint16_t)p[3], (uint8_t)p[4]);
   } else if (params == 3 && p[0] == 6436) { // <T id DCC n n>
     return createDCC(id, p[1], p[2]);
   } else if (params == 2 && p[0] == -415) { // <T id VPIN n>
     return create(id, p[1]);
-  } else if (params == 2 && p[0] == 15085) { // <T ID LED vpin>
-    return createServo(id, p[1], 4095, 0, Analogue::Fast);
   } else if (params == 2) { // <T id n n> for DCC or LCN
     return createDCC(id, p[0], p[1]);
   } else if (params == 3) { // legacy <T id n n n> for Servo
-    return createServo(id, p[0], p[1], p[2]);
+    return createServo(id, (VPIN)p[0], (uint8_t)p[1], (uint8_t)p[2]);
   }
   return NULL;
 }
@@ -240,17 +246,15 @@ Turnout *Turnout::create(int id){
 //
 #ifdef EESTOREDEBUG
 void Turnout::print(Turnout *tt) {
+  tt->print(StringFormatter::diagSerial);
   if (tt->data.tStatus & STATUS_PWM) {
-    int inactivePosition = (tt->data.positionWord >> 4) & 0xfff;
-    int activePosition = ((tt->data.positionWord & 0xf) << 8) | tt->data.positionByte;
+    int inactivePosition = (tt->data.positionWord) & 0x1ff;
+    int activePosition = ((tt->data.positionWord & 0x200) >> 1) | tt->data.positionByte;
+    int profile = (tt->data.positionByte >> 10) & 0x7;
     int pin = (tt->data.tStatus & STATUS_PWMPIN);
     int vpin = pin+IODevice::firstServoVPin;
-    if (activePosition == 4095 && inactivePosition == 0) 
-      DIAG(F("<H %d LED %d %d>\n"), tt->data.id, vpin, 
-          (tt->data.tStatus & STATUS_ACTIVE)!=0);
-    else
-      DIAG(F("<H %d SERVO %d %d %d %d>\n"), tt->data.id, vpin, 
-          activePosition, inactivePosition, (tt->data.tStatus & STATUS_ACTIVE)!=0);
+    DIAG(F("<H %d SERVO %d %d %d %d %d>\n"), tt->data.id, vpin, 
+        activePosition, inactivePosition, profile, (tt->data.tStatus & STATUS_ACTIVE)!=0);
   } else
     DIAG(F("<H %d DCC %d %d %d>\n"), tt->data.id, tt->data.address, 
         tt->data.subAddress, (tt->data.tStatus & STATUS_ACTIVE)!=0);

@@ -260,14 +260,64 @@ private:
   uint8_t _currentPortStateB[_maxModules];
   uint8_t _portModeA[_maxModules];
   uint8_t _portModeB[_maxModules];
+  uint8_t _portPullupA[_maxModules];
+  uint8_t _portPullupB[_maxModules];
 
   enum {
     IODIRA = 0x00,
     IODIRB = 0x01,
     GPIOA = 0x12,
-    GPIOB = 0x13
+    GPIOB = 0x13,
+    GPPUA = 0x0C,
+    GPPUB = 0x0D
   };
 };
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+/*
+ * Example of an IODevice subclass for MCP23008 8-bit I/O expander.
+ */
+ 
+class MCP23008 : public IODevice {
+public:
+  static IODevice *createInstance(VPIN vpin, int nPins, uint8_t I2CAddress);
+  static void create(VPIN vpin, int nPins, uint8_t I2CAddress) ;
+
+private:
+  // Constructor
+  MCP23008();  
+  // Device-specific initialisation
+  void _begin();
+  // Device-specific write function.
+  void _write(VPIN vpin, int value);
+  // Device-specific read function.
+  int _read(VPIN vpin);
+  void _display();
+  void _loop(unsigned long currentMicros);
+  // Helper functions
+  void writeRegister(uint8_t I2CAddress, uint8_t reg, uint8_t value) ;
+  uint8_t readRegister(uint8_t I2CAddress, uint8_t reg);
+
+  // Address may be 0x20 up to 0x27, but this may conflict with an LCD if present on 0x27
+  //  or an Adafruit LCD backpack which defaults to 0x20
+  uint8_t _I2CAddress; 
+  // Maximum number of MCP23008 modules supported.
+  uint8_t _nModules;
+  static const int _maxModules = 8;
+  uint8_t _portDirection[_maxModules];
+  uint8_t _portPullup[_maxModules];
+  uint8_t _portInputState[_maxModules]; 
+  uint8_t _portOutputState[_maxModules];
+  uint8_t _portCounter[_maxModules];
+  // Flag that at least one _portCounter is nonzero.
+  bool _counterSet;
+  // Interval between ticks when counters are updated
+  static const int _portTickTime = 500;
+  // Number of ticks to elapse before cached port values expire.
+  static const int _minTicksBetweenPortReads = 2;
+  unsigned long _lastLoopEntry = 0;
+};
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 /*

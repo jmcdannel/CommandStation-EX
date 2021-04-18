@@ -241,7 +241,7 @@ uint8_t MiniTwoWire::endTransmission(void)
 
 uint8_t MiniTwoWire::endTransmission(uint8_t sendStop)
 {
-  return endTransmission(true, true);
+  return endTransmission(sendStop, true);
 }
 
 // // must be called in:
