@@ -46,7 +46,7 @@ void Turnout::print(Print *stream){
   } else if (data.address == LCN_TURNOUT_ADDRESS) {
     // LCN Turnout
     StringFormatter::send(stream, F("<H %d LCN>"), data.id);
-  } else if (data.subAddress == VPIN_TURNOUT_SUBADDRESS) {
+  } else if (data.subAddress == (uint8_t)VPIN_TURNOUT_SUBADDRESS) {
     // VPIN Digital output
     StringFormatter::send(stream, F("<H %d VPIN %d"), data.id, data.address);
   } else {
@@ -138,7 +138,7 @@ void Turnout::load(){
       int pin = (data.tStatus & STATUS_PWMPIN);
       int vpin = pin+IODevice::firstServoVPin;
       tt=createServo(data.id,vpin,activePosition, inactivePosition, profile, (data.tStatus & STATUS_ACTIVE) ? 1 : 0);
-    } else if (data.subAddress==VPIN_TURNOUT_SUBADDRESS) 
+    } else if (data.subAddress==(uint8_t)VPIN_TURNOUT_SUBADDRESS) 
       tt=create(data.id,data.subAddress);  // VPIN-based turnout
     else
       tt=createDCC(data.id,data.address,data.subAddress); // DCC/LCN-based turnout
