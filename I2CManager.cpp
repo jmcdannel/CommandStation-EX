@@ -51,8 +51,8 @@ void I2CManagerClass::begin(void) {
 void I2CManagerClass::setClock(uint32_t speed) {
   if (speed < _clockSpeed && !_clockSpeedFixed) {
     _clockSpeed = speed;
-    Wire.setClock(_clockSpeed);
   }
+  Wire.setClock(_clockSpeed);
 }
 
 // Force clock speed to that specified.  It can then only 

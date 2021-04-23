@@ -21,8 +21,6 @@
 
 #include "Arduino.h"
 
-#define  SENSOR_DECAY  0.03
-
 struct SensorData {
   int snum;
   uint8_t pin;
@@ -44,9 +42,9 @@ struct Sensor{
   static void checkAll(Print *);
   static void printAll(Print *);
   static unsigned int lastReadCycle; // low 16 bits of micros, holds up to 64 milliseconds
-  static const unsigned int cycleInterval = 2000; // min time between consecutive reads of each sensor in microsecs.
+  static const unsigned int cycleInterval = 5000; // min time between consecutive reads of each sensor in microsecs.
   static const unsigned int minReadCount = 2; // number of consecutive reads before acting on change
-                                        // E.g. 2 x 2000 means debounce time of 4ms
+                                        // E.g. 2 x 5000 means debounce time of 10ms
 }; // Sensor
 
 #endif

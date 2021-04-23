@@ -48,13 +48,13 @@ public:
     _registerDeviceType(DeviceType::Analogue, createInstance);
   }
   static IODevice *createInstance(VPIN vpin);
-  static void create(VPIN vpin, VPIN devicePin, int activePosition, int inactivePosition, int profile);  
+  static void create(VPIN vpin, VPIN devicePin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t initialState);  
   Analogue() { }
 
   void _loop(unsigned long currentMicros);
   void _write(VPIN vpin, int value);
   bool _configure(VPIN vpin, int paramCount, int params[]);
-  void _configure(VPIN vpin, VPIN devicePin, int activePosition, int inactivePosition, int profile);
+  void _configure(VPIN vpin, VPIN devicePin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile);
   void _display();
   bool _isDeletable();
 

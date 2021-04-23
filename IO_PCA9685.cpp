@@ -52,7 +52,6 @@ IODevice *PCA9685::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
   dev->_nPins = min(nPins, 8*8);
   dev->_nModules = (nPins + 15) / 16;
   dev->_I2CAddress = I2CAddress;
-  dev->_begin();
   addDevice(dev);
   return dev;
 }

@@ -30,30 +30,32 @@ IODevice *Analogue::createInstance(VPIN vpin) {
   dev->_firstID = vpin;
   dev->_nPins = 1;
   dev->_numSteps = dev->_stepNumber = 0;
-  dev->_state = 0;
+  dev->_state = -1; // Unknown state
   addDevice(dev);
   return dev; 
 }
 
-void Analogue::create(VPIN vpin, VPIN devicePin, int activePosition, int inactivePosition, int profile) {
+void Analogue::create(VPIN vpin, VPIN devicePin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t initialState) {
   Analogue *dev = (Analogue *)createInstance(vpin);
+  dev->_state = initialState;
   dev->_configure(vpin, devicePin, activePosition, inactivePosition, profile);
 }
 
 //==================================================================================================================
 // Instance members
 //------------------------------------------------------------------------------------------------------------------
-void Analogue::_configure(VPIN vpin, VPIN devicePin, int activePosition, int inactivePosition, int profile) {
+void Analogue::_configure(VPIN vpin, VPIN devicePin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile) {
   (void)vpin;    // Suppress compiler warning
   #ifdef DIAG_IO
   DIAG(F("Analogue configure Vpin:%d->Vpin:%d %d-%d %d"), vpin, devicePin, activePosition, inactivePosition, profile);
   #endif
   _devicePin = devicePin;
   _activePosition = activePosition;
-  _currentPosition = _inactivePosition = inactivePosition;
+  _inactivePosition = inactivePosition;
+  _currentPosition = _state ? activePosition : inactivePosition;
   _profile = (ProfileType)profile;
   
-  IODevice::writeDownstream(vpin, _inactivePosition);
+  IODevice::writeDownstream(vpin, _currentPosition);
   _stepNumber = _numSteps = 0;  // this forces next call to updatePosition to switch off the servo
 }
 
@@ -61,8 +63,8 @@ void Analogue::_configure(VPIN vpin, VPIN devicePin, int activePosition, int ina
 // It's not worth going faster than 20ms as this is the pulse 
 // frequency for the PWM Servo driver.  50ms is acceptable.
 void Analogue::_loop(unsigned long currentMicros) {
-  unsigned int currentTime = currentMicros/1000; // 16-bit millisecond timer
-  if (currentTime - _lastRefreshTime >= refreshInterval) { 
+  unsigned int currentTime = currentMicros; // 16-bit low part (up to 65ms)
+  if (currentTime - _lastRefreshTime >= refreshInterval*1000) { 
     updatePosition();
     _lastRefreshTime = currentTime;
   }
@@ -83,6 +85,14 @@ void Analogue::_write(VPIN vpin, int value) {
   (void)vpin;  // suppress compiler warning
   #endif
   if (value) value = 1;
+  if (_state == -1) {
+    // Initial position being set, go straight there
+    _fromPosition = _toPosition = _currentPosition = (_state ? _activePosition : _inactivePosition);
+    _state = value;
+    updatePosition();
+    return;
+  }
+
   if (_state == value) return; // Nothing to do.
   switch (_profile) {
     case Instant: 

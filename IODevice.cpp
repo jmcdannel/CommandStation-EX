@@ -57,8 +57,7 @@ void IODevice::_registerDeviceType(int deviceTypeID, IODevice *createFunction(VP
 
 // Static method to initialise the IODevice subsystem.  
 // Create any standard device instances that may be required, such as the Arduino pins 
-// and PCA9685.  I've opted to include one PCA9685 for servo control if we're not on a
-// nano or uno controller.
+// and PCA9685.
 void IODevice::begin() {
   // Initialise the IO subsystem
   ArduinoPins::create(2, 48);  // Reserve pins numbered 2-49 for direct access
@@ -77,7 +76,7 @@ void IODevice::begin() {
 
 // Overarching static loop() method for the IODevice subsystem.  Works through the
 // list of installed devices and calls their individual _loop() method.
-// Devices may not implement this, but it is useful for things like animations 
+// Devices may not implement this, but if they do it is useful for things like animations 
 // or flashing LEDs.
 // The current value of micros() is passed as a parameter, so the called loop function
 // doesn't need to invoke it.
@@ -87,6 +86,28 @@ void IODevice::loop() {
   for (IODevice *dev = _firstDevice; dev != 0; dev = dev->_nextDevice) {
     dev->_loop(currentMicros);
   }
+
+  // Report loop time if diags enabled
+#if DIAG_IO
+  static unsigned long lastMicros = 0;
+  static unsigned long maxElapsed = 0;
+  static unsigned long lastOutputTime = 0;
+  static unsigned long count = 0;
+  unsigned long elapsed = currentMicros - lastMicros;
+  // Ignore long loop counts while message is still outputting
+  if (currentMicros - lastOutputTime > 3000) {
+    if (elapsed > maxElapsed) maxElapsed = elapsed;
+  }
+  count++;
+  if (currentMicros - lastOutputTime > 5000000L) {
+    if (lastOutputTime > 0) 
+      DIAG(F("Looptime Max=%dus, Ave=%dus"), (int)maxElapsed, (int)((unsigned long)5000000L/count));
+    maxElapsed = 0;
+    count = 0;
+    lastOutputTime = currentMicros;
+  }
+  lastMicros = micros();
+#endif
 }
 
 // Display a list of all the devices on the diagnostic stream.
