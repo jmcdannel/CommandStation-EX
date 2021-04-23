@@ -24,11 +24,9 @@
 #include "DCCTimer.h"
 #include "DIAG.h"
 #include "freeMemory.h"
- 
 
 DCCWaveform  DCCWaveform::mainTrack(PREAMBLE_BITS_MAIN, true);
 DCCWaveform  DCCWaveform::progTrack(PREAMBLE_BITS_PROG, false);
-
 
 bool DCCWaveform::progTrackSyncMain=false; 
 bool DCCWaveform::progTrackBoosted=false; 
@@ -46,9 +44,9 @@ void DCCWaveform::begin(MotorDriver * mainDriver, MotorDriver * progDriver) {
   // Only use PWM if both pins are PWM capable. Otherwise JOIN does not work
   MotorDriver::usePWM= mainDriver->isPWMCapable() && progDriver->isPWMCapable();
   if (MotorDriver::usePWM)
-    DIAG(F("\nWaveform using PWM pins for accuracy."));
+    DIAG(F("Signal pin config: high accuracy waveform"));
   else
-    DIAG(F("\nWaveform accuracy limited by signal pin configuration."));
+    DIAG(F("Signal pin config: normal accuracy waveform"));
   DCCTimer::begin(DCCWaveform::interruptHandler);     
 }
 
@@ -140,9 +138,9 @@ void DCCWaveform::checkPowerOverload(bool ackManagerActive) {
 	      }
 	      // Write this after the fact as we want to turn on as fast as possible
 	      // because we don't know which output actually triggered the fault pin
-	      DIAG(F("\n*** COMMON FAULT PIN ACTIVE - TOGGLED POWER on %S ***\n"), isMainTrack ? F("MAIN") : F("PROG"));
+	      DIAG(F("*** COMMON FAULT PIN ACTIVE - TOGGLED POWER on %S ***"), isMainTrack ? F("MAIN") : F("PROG"));
 	  } else {
-	      DIAG(F("\n*** %S FAULT PIN ACTIVE - OVERLOAD ***\n"), isMainTrack ? F("MAIN") : F("PROG"));
+	      DIAG(F("*** %S FAULT PIN ACTIVE - OVERLOAD ***"), isMainTrack ? F("MAIN") : F("PROG"));
 	      if (lastCurrent < tripValue) {
 		  lastCurrent = tripValue; // exaggerate
 	      }
@@ -160,7 +158,7 @@ void DCCWaveform::checkPowerOverload(bool ackManagerActive) {
         unsigned int maxmA=motorDriver->raw2mA(tripValue);
 	power_good_counter=0;
         sampleDelay = power_sample_overload_wait;
-        DIAG(F("\n*** %S TRACK POWER OVERLOAD current=%d max=%d  offtime=%d ***\n"), isMainTrack ? F("MAIN") : F("PROG"), mA, maxmA, sampleDelay);
+        DIAG(F("*** %S TRACK POWER OVERLOAD current=%d max=%d  offtime=%d ***"), isMainTrack ? F("MAIN") : F("PROG"), mA, maxmA, sampleDelay);
 	if (power_sample_overload_wait >= 10000)
 	    power_sample_overload_wait = 10000;
 	else
@@ -172,7 +170,7 @@ void DCCWaveform::checkPowerOverload(bool ackManagerActive) {
       setPowerMode(POWERMODE::ON);
       sampleDelay = POWER_SAMPLE_ON_WAIT;
       // Debug code....
-      DIAG(F("\n*** %S TRACK POWER RESET delay=%d ***\n"), isMainTrack ? F("MAIN") : F("PROG"), sampleDelay);
+      DIAG(F("*** %S TRACK POWER RESET delay=%d ***"), isMainTrack ? F("MAIN") : F("PROG"), sampleDelay);
       break;
     default:
       sampleDelay = 999; // cant get here..meaningless statement to avoid compiler warning.
@@ -256,7 +254,7 @@ void DCCWaveform::interrupt2() {
 
 // Wait until there is no packet pending, then make this pending
 void DCCWaveform::schedulePacket(const byte buffer[], byte byteCount, byte repeats) {
-  if (byteCount >= MAX_PACKET_SIZE) return; // allow for chksum
+  if (byteCount > MAX_PACKET_SIZE) return; // allow for chksum
   while (packetPending);
 
   byte checksum = 0;
@@ -264,6 +262,7 @@ void DCCWaveform::schedulePacket(const byte buffer[], byte byteCount, byte repea
     checksum ^= buffer[b];
     pendingPacket[b] = buffer[b];
   }
+  // buffer is MAX_PACKET_SIZE but pendingPacket is one bigger
   pendingPacket[byteCount] = checksum;
   pendingLength = byteCount + 1;
   pendingRepeats = repeats;
@@ -278,7 +277,7 @@ void DCCWaveform::setAckBaseline() {
       if (isMainTrack) return;
       int baseline=motorDriver->getCurrentRaw();
       ackThreshold= baseline + motorDriver->mA2raw(ackLimitmA);
-      if (Diag::ACK) DIAG(F("\nACK baseline=%d/%dmA Threshold=%d/%dmA Duration: %dus <= pulse <= %dus"),
+      if (Diag::ACK) DIAG(F("ACK baseline=%d/%dmA Threshold=%d/%dmA Duration between %dus and %dus"),
 			  baseline,motorDriver->raw2mA(baseline),
 			  ackThreshold,motorDriver->raw2mA(ackThreshold),
                           minAckPulseDuration, maxAckPulseDuration);
@@ -296,7 +295,7 @@ void DCCWaveform::setAckPending() {
 
 byte DCCWaveform::getAck() {
       if (ackPending) return (2);  // still waiting
-      if (Diag::ACK) DIAG(F("\n%S after %dmS max=%d/%dmA pulse=%duS"),ackDetected?F("ACK"):F("NO-ACK"), ackCheckDuration, 
+      if (Diag::ACK) DIAG(F("%S after %dmS max=%d/%dmA pulse=%duS"),ackDetected?F("ACK"):F("NO-ACK"), ackCheckDuration, 
            ackMaxCurrent,motorDriver->raw2mA(ackMaxCurrent), ackPulseDuration);
       if (ackDetected) return (1); // Yes we had an ack
       return(0);  // pending set off but not detected means no ACK.   

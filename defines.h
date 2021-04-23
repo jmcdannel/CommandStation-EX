@@ -23,7 +23,7 @@
 // WIFI_ON: All prereqs for running with WIFI are met
 // Note: WIFI_CHANNEL may not exist in early config.h files so is added here if needed.
 
-#if ENABLE_WIFI && (defined(ARDUINO_AVR_MEGA) || defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_SAMD_ZERO))
+#if ENABLE_WIFI && (defined(ARDUINO_AVR_MEGA) || defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_SAMD_ZERO)  || defined(TEENSYDUINO))
 #define WIFI_ON true
 #ifndef WIFI_CHANNEL
 #define WIFI_CHANNEL 1
@@ -32,12 +32,16 @@
 #define WIFI_ON false
 #endif
 
-#if ENABLE_ETHERNET && (defined(ARDUINO_AVR_MEGA) || defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_SAMD_ZERO))
+#if ENABLE_ETHERNET && (defined(ARDUINO_AVR_MEGA) || defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_SAMD_ZERO) || defined(TEENSYDUINO)) 
 #define ETHERNET_ON true
 #else
 #define ETHERNET_ON false
 #endif
- 
+
+#if WIFI_ON && ETHERNET_ON
+ #error Command Station does not support WIFI and ETHERNET at the same time.
+#endif
+  
 ////////////////////////////////////////////////////////////////////////////////
 //
 // This defines the speed at which the Arduino will communicate with the ESP8266 module.

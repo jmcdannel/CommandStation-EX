@@ -18,6 +18,7 @@
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <Arduino.h>
 #include "freeMemory.h"
 
 // thanks go to  https://github.com/mpflaga/Arduino-MemoryFree
@@ -31,25 +32,80 @@ extern char *__malloc_heap_start;
 #endif
 
 
-static volatile int minimum_free_memory = 32767;
+static volatile int minimum_free_memory = __INT_MAX__;
 
-
-int freeMemory() {
+#if !defined(__IMXRT1062__)
+static inline int freeMemory() {
   char top;
 #if defined(__arm__)
   return &top - reinterpret_cast<char*>(sbrk(0));
 #elif defined(__AVR__)
   return __brkval ? &top - __brkval : &top - __malloc_heap_start;
 #else
-#error bailed out alredy above
+#error bailed out already above
 #endif
 }
 
+// Return low memory value.
+int minimumFreeMemory() {
+  byte sreg_save = SREG;
+  noInterrupts(); // Disable interrupts
+  int retval = minimum_free_memory;
+  SREG = sreg_save; // Restore interrupt state
+  return retval;
+}
+
+#else
+#if defined(ARDUINO_TEENSY40)
+  static const unsigned DTCM_START = 0x20000000UL;
+  static const unsigned OCRAM_START = 0x20200000UL;
+  static const unsigned OCRAM_SIZE = 512;
+  static const unsigned FLASH_SIZE = 1984;
+#elif defined(ARDUINO_TEENSY41)
+  static const unsigned DTCM_START = 0x20000000UL;
+  static const unsigned OCRAM_START = 0x20200000UL;
+  static const unsigned OCRAM_SIZE = 512;
+  static const unsigned FLASH_SIZE = 7936;
+#if TEENSYDUINO>151
+  extern "C" uint8_t external_psram_size;
+#endif
+#endif
+
+static inline int freeMemory() {
+  extern unsigned long _ebss;
+  extern unsigned long _sdata;
+  extern unsigned long _estack;
+  const unsigned DTCM_START = 0x20000000UL;
+  unsigned dtcm = (unsigned)&_estack - DTCM_START;
+  unsigned stackinuse = (unsigned) &_estack -  (unsigned) __builtin_frame_address(0);
+  unsigned varsinuse = (unsigned)&_ebss - (unsigned)&_sdata;
+  unsigned freemem = dtcm - (stackinuse + varsinuse);
+  return freemem;
+}
+
+// Return low memory value.
+int minimumFreeMemory() {
+  //byte sreg_save = SREG;
+  //noInterrupts(); // Disable interrupts
+  int retval = minimum_free_memory;
+  //SREG = sreg_save; // Restore interrupt state
+  return retval;
+}
+#endif
+
+
 // Update low ram level.  Allow for extra bytes to be specified
 // by estimation or inspection, that may be used by other 
-// called subroutines.
-int updateMinimumFreeMemory(unsigned char extraBytes) {
+// called subroutines.  Must be called with interrupts disabled.
+// 
+// Although __brkval may go up and down as heap memory is allocated
+// and freed, this function records only the worst case encountered.
+// So even if all of the heap is freed, the reported minimum free 
+// memory will not increase.
+//
+void updateMinimumFreeMemory(unsigned char extraBytes) {
   int spare = freeMemory()-extraBytes;
+  if (spare < 0) spare = 0;
   if (spare < minimum_free_memory) minimum_free_memory = spare;
-  return minimum_free_memory;
 }
+

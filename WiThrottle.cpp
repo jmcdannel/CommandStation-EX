@@ -76,7 +76,7 @@ bool WiThrottle::areYouUsingThrottle(int cab) {
  // One instance of WiThrottle per connected client, so we know what the locos are 
  
 WiThrottle::WiThrottle( int wificlientid) {
-   if (Diag::WITHROTTLE) DIAG(F("\n%l Creating new WiThrottle for client %d\n"),millis(),wificlientid); 
+   if (Diag::WITHROTTLE) DIAG(F("%l Creating new WiThrottle for client %d"),millis(),wificlientid); 
    nextThrottle=firstThrottle;
    firstThrottle= this;
    clientid=wificlientid;
@@ -104,7 +104,7 @@ void WiThrottle::parse(RingStream * stream, byte * cmdx) {
   byte * cmd=cmdx;
   
   heartBeat=millis();
-  if (Diag::WITHROTTLE) DIAG(F("\n%l WiThrottle(%d)<-[%e]\n"),millis(),clientid,cmd);
+  if (Diag::WITHROTTLE) DIAG(F("%l WiThrottle(%d)<-[%e]"),millis(),clientid,cmd);
 
   if (initSent) {
     // Send power state if different than last sent
@@ -184,7 +184,7 @@ void WiThrottle::parse(RingStream * stream, byte * cmdx) {
                 StringFormatter::send(stream, F("M%c-%c%d<;>\n"), myLocos[loco].throttle, LorS(myLocos[loco].cab), myLocos[loco].cab);
               }
             }
-            if (Diag::WITHROTTLE) DIAG(F("%l WiThrottle(%d) Quit\n"),millis(),clientid);
+            if (Diag::WITHROTTLE) DIAG(F("%l WiThrottle(%d) Quit"),millis(),clientid);
             delete this; 
             break;           
    }
@@ -207,6 +207,7 @@ int WiThrottle::getLocoId(byte * cmd) {
     if (cmd[0]!='L' && cmd[0]!='S') return 0; // should not match any locos
     return getInt(cmd+1); 
 }
+
 void WiThrottle::multithrottle(RingStream * stream, byte * cmd){ 
           char throttleChar=cmd[1];
           int locoid=getLocoId(cmd+3); // -1 for *
@@ -214,9 +215,20 @@ void WiThrottle::multithrottle(RingStream * stream, byte * cmd){
           while(*aval !=';' && *aval !='\0') aval++;
           if (*aval) aval+=2;  // skip ;>
 
-//       DIAG(F("\nMultithrottle aval=%c cab=%d"), aval[0],locoid);    
+//       DIAG(F("Multithrottle aval=%c cab=%d"), aval[0],locoid);    
        switch(cmd[2]) {
           case '+':  // add loco request
+                if (cmd[3]=='*') { 
+                  // M+* means get loco from prog track, then join tracks ready to drive away
+                  // Stash the things the callback will need later
+                  stashStream= stream;
+                  stashClient=stream->peekTargetMark();
+                  stashThrottleChar=throttleChar;
+                  stashInstance=this;
+                  // ask DCC to call us back when the loco id has been read
+                  DCC::getLocoId(getLocoCallback); // will remove any previous join                    
+                  return; // return nothing in stream as response is sent later in the callback 
+                }
                 //return error if address zero requested
                 if (locoid==0) { 
                   StringFormatter::send(stream, F("HMAddress '0' not supported!\n"), cmd[3] ,locoid);                    
@@ -236,7 +248,7 @@ void WiThrottle::multithrottle(RingStream * stream, byte * cmd){
                     //Get known Fn states from DCC 
                     for(int fKey=0; fKey<=28; fKey++) { 
                       int fstate=DCC::getFn(locoid,fKey);
-                      if (fstate>=0) StringFormatter::send(stream,F("M%cA%c<;>F%d%d\n"),throttleChar,cmd[3],fstate,fKey);
+                        if (fstate>=0) StringFormatter::send(stream,F("M%cA%c%d<;>F%d%d\n"),throttleChar,cmd[3],locoid,fstate,fKey);                     
                     }
                     StringFormatter::send(stream, F("M%cA%c%d<;>V%d\n"), throttleChar, cmd[3], locoid, DCCToWiTSpeed(DCC::getThrottleSpeed(locoid)));
                     StringFormatter::send(stream, F("M%cA%c%d<;>R%d\n"), throttleChar, cmd[3], locoid, DCC::getThrottleDirection(locoid));
@@ -260,7 +272,7 @@ void WiThrottle::multithrottle(RingStream * stream, byte * cmd){
 
 void WiThrottle::locoAction(RingStream * stream, byte* aval, char throttleChar, int cab){
     // Note cab=-1 for all cabs in the consist called throttleChar.  
-//    DIAG(F("\nLoco Action aval=%c%c throttleChar=%c, cab=%d"), aval[0],aval[1],throttleChar, cab);
+//    DIAG(F("Loco Action aval=%c%c throttleChar=%c, cab=%d"), aval[0],aval[1],throttleChar, cab);
      switch (aval[0]) {
            case 'V':  // Vspeed
              { 
@@ -354,10 +366,10 @@ void WiThrottle::loop(RingStream * stream) {
 void WiThrottle::checkHeartbeat() {
   // if eStop time passed... eStop any locos still assigned to this client and then drop the connection
   if(heartBeatEnable && (millis()-heartBeat > ESTOP_SECONDS*1000)) {
-  if (Diag::WITHROTTLE)  DIAG(F("\n\n%l WiThrottle(%d) eStop(%ds) timeout, drop connection\n"), millis(), clientid, ESTOP_SECONDS);
+  if (Diag::WITHROTTLE)  DIAG(F("%l WiThrottle(%d) eStop(%ds) timeout, drop connection"), millis(), clientid, ESTOP_SECONDS);
     LOOPLOCOS('*', -1) { 
       if (myLocos[loco].throttle!='\0') {
-        if (Diag::WITHROTTLE) DIAG(F("%l  eStopping cab %d\n"),millis(),myLocos[loco].cab);
+        if (Diag::WITHROTTLE) DIAG(F("%l  eStopping cab %d"),millis(),myLocos[loco].cab);
         DCC::setThrottle(myLocos[loco].cab, 1, DCC::getThrottleDirection(myLocos[loco].cab)); // speed 1 is eStop
       }
     }
@@ -367,4 +379,24 @@ void WiThrottle::checkHeartbeat() {
 
 char WiThrottle::LorS(int cab) {
     return (cab<127)?'S':'L';
-} 
+}
+
+// Drive Away feature. Callback handling
+ 
+RingStream * WiThrottle::stashStream;
+WiThrottle * WiThrottle::stashInstance;
+byte         WiThrottle::stashClient;
+char         WiThrottle::stashThrottleChar;
+
+void WiThrottle::getLocoCallback(int16_t locoid) {
+  stashStream->mark(stashClient);
+  if (locoid<0) StringFormatter::send(stashStream,F("HMNo loco found on prog track\n"));
+  else {
+    char addcmd[20]={'M',stashThrottleChar,'+',LorS(locoid) };
+    itoa(locoid,addcmd+4,10);
+    stashInstance->multithrottle(stashStream, (byte *)addcmd);
+    DCCWaveform::progTrack.setPowerMode(POWERMODE::ON);
+    DCC::setProgTrackSyncMain(true);  // <1 JOIN> so we can drive loco away
+  }
+  stashStream->commit();
+}
