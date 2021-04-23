@@ -1,5 +1,6 @@
 /*
  *  © 2020, Chris Harlow. All rights reserved.
+ *  © 2021, modified by Neil McKechnie. All rights reserved.
  *  
  *  This file is part of Asbelos DCC API
  *
@@ -68,6 +69,7 @@ decide to ignore the <q ID> return and only react to <Q ID> triggers.
 #include "StringFormatter.h"
 #include "Sensors.h"
 #include "EEStore.h"
+#include "IODevice.h"
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -75,16 +77,25 @@ decide to ignore the <q ID> return and only react to <Q ID> triggers.
 // checks one defined sensors and prints _changed_ sensor state
 // to stream unless stream is NULL in which case only internal
 // state is updated. Then advances to next sensor which will
-// be checked att next invocation.
+// be checked att next invocation.  Each cycle of reading all sensors will
+// take place no more frequently than once per millisecond.
 //
 ///////////////////////////////////////////////////////////////////////////////
 
 void Sensor::checkAll(Print *stream){
 
   if (firstSensor == NULL) return;
-  if (readingSensor == NULL) readingSensor=firstSensor;
+  if (readingSensor == NULL) { 
+    unsigned int thisTime = micros(); // Up to 65ms time count
+    if (thisTime - lastReadCycle >= cycleInterval) {
+      // At least 1ms elapsed since last read cycle, initiate new read cycle
+      readingSensor = firstSensor;
+      lastReadCycle = thisTime;
+    }
+  }
+  if (!readingSensor) return;
 
-  bool sensorstate = digitalRead(readingSensor->data.pin);
+  bool sensorstate = IODevice::read(readingSensor->data.pin);
 
   if (!sensorstate == readingSensor->active) { // active==true means sensorstate=0/false so sensor unchanged
     // no change
@@ -92,9 +103,9 @@ void Sensor::checkAll(Print *stream){
       // enable if you want to debug contact jitter
       //if (stream != NULL) StringFormatter::send(stream, F("JITTER %d %d\n"), 
       //                                          readingSensor->latchdelay, readingSensor->data.snum);
-       readingSensor->latchdelay=0; // reset
+      readingSensor->latchdelay=0; // reset
     }
-  } else if (readingSensor->latchdelay < 127) { // byte, max 255, good value unknown yet
+  } else if (readingSensor->latchdelay < minReadCount-1) { // byte, max 255, good value unknown yet
     // change but first increase anti-jitter counter
     readingSensor->latchdelay++;
   } else {
@@ -144,8 +155,8 @@ Sensor *Sensor::create(int snum, int pin, int pullUp){
   tt->data.pullUp=(pullUp==0?LOW:HIGH);
   tt->active=false;
   tt->latchdelay=0;
-  pinMode(pin,INPUT);         // set mode to input
-  digitalWrite(pin,pullUp);   // don't use Arduino's internal pull-up resistors for external infrared sensors --- each sensor must have its own 1K external pull-up resistor
+  // TODO: Pullup enabled by default, and can't currently be turned off.  Doesn't stop a lower value external pull-up being added.
+  //digitalWrite(pin,pullUp);   // don't use Arduino's internal pull-up resistors for external infrared sensors --- each sensor must have its own 1K external pull-up resistor
 
   return tt;
 
@@ -211,3 +222,4 @@ void Sensor::store(){
 
 Sensor *Sensor::firstSensor=NULL;
 Sensor *Sensor::readingSensor=NULL;
+unsigned int Sensor::lastReadCycle=0;

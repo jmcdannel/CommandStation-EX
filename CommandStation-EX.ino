@@ -131,6 +131,9 @@ void loop()
   #endif
 
   LCDDisplay::loop();  // ignored if LCD not in use 
+
+  // Handle/update IO devices.
+  IODevice::loop();
   
   // Report any decrease in memory (will automatically trigger on first call)
   static int ramLowWatermark = __INT_MAX__; // replaced on first loop 

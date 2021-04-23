@@ -22,6 +22,7 @@
 #define LiquidCrystal_I2C_h
 
 #include <Arduino.h>
+#include "LCDDisplay.h"
 
 // commands
 #define LCD_CLEARDISPLAY 0x01
@@ -69,18 +70,20 @@
 #define Rw 0b00000010  // Read/Write bit
 #define Rs 0b00000001  // Register select bit
 
-class LiquidCrystal_I2C : public Print {
+class LiquidCrystal_I2C : public LCDDisplay {
 public:
   LiquidCrystal_I2C(uint8_t lcd_Addr,uint8_t lcd_cols,uint8_t lcd_rows);
-  void begin(uint8_t cols, uint8_t rows);
-  void clear();
+  void begin();
+  void clearNative();
+  void setRowNative(byte line);
+  size_t writeNative(uint8_t c);
+  
   void noDisplay();
   void display();
   void noBacklight();
   void backlight();
   
-  void setCursor(uint8_t, uint8_t); 
-  virtual size_t write(uint8_t);
+  void setCursor(uint8_t, uint8_t);
   void command(uint8_t);
   void init();
 
@@ -93,9 +96,6 @@ private:
   uint8_t _displayfunction;
   uint8_t _displaycontrol;
   uint8_t _displaymode;
-  uint8_t _numlines;
-  uint8_t _cols;
-  uint8_t _rows;
   uint8_t _backlightval;
 };
 

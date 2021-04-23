@@ -16,6 +16,8 @@
 #include "LCD_Implementation.h"
 #include "LCN.h"
 #include "freeMemory.h"
+#include "IODevice.h"
+#include "Turnouts.h"
 
 #if __has_include ( "myAutomation.h")
   #include "RMFT.h"

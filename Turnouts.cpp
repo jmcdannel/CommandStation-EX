@@ -20,7 +20,6 @@
  */
 #include "Turnouts.h"
 #include "EEStore.h"
-#include "PWMServoDriver.h"
 #include "StringFormatter.h"
 #ifdef EESTOREDEBUG
 #include "DIAG.h"
@@ -31,6 +30,24 @@ void Turnout::printAll(Print *stream){
   for (Turnout *tt = Turnout::firstTurnout; tt != NULL; tt = tt->nextTurnout)
     StringFormatter::send(stream, F("<H %d %d>\n"), tt->data.id, (tt->data.tStatus & STATUS_ACTIVE)!=0);
 } // Turnout::printAll
+
+// print configuration of one turnout to stream
+void Turnout::print(Print *stream){
+  if (data.tStatus & STATUS_PWM) {
+    int inactivePosition = (data.positionWord >> 4) & 0xfff;
+    int activePosition = ((data.positionWord & 0xf) << 8) | data.positionByte;
+    int pin = (data.tStatus & STATUS_PWMPIN);
+    int vpin = pin+IODevice::firstServoVPin;
+    if (activePosition == 4095 && inactivePosition == 0) 
+      StringFormatter::send(stream, F("<H %d LED %d %d>\n"), data.id, vpin, 
+          (data.tStatus & STATUS_ACTIVE)!=0);
+    else
+      StringFormatter::send(stream, F("<H %d SERVO %d %d %d %d>\n"), data.id, vpin, 
+          activePosition, inactivePosition, (data.tStatus & STATUS_ACTIVE)!=0);
+  } else
+    StringFormatter::send(stream, F("<H %d DCC %d %d %d>\n"), data.id, data.address, 
+        data.subAddress, (data.tStatus & STATUS_ACTIVE)!=0);
+}
 
 bool Turnout::activate(int n,bool state){
 #ifdef EESTOREDEBUG
@@ -64,10 +81,12 @@ void Turnout::activate(bool state) {
     data.tStatus|=STATUS_ACTIVE;
   else
     data.tStatus &= ~STATUS_ACTIVE;
-  if (data.tStatus & STATUS_PWM)
-    PWMServoDriver::setServo(data.tStatus & STATUS_PWMPIN, (data.inactiveAngle+(state?data.moveAngle:0)));
+
+  int pin = (data.tStatus & STATUS_PWMPIN);
+  if (data.tStatus & STATUS_PWM) 
+    IODevice::write(pin+IODevice::firstServoVPin, state);
   else
-    DCC::setAccessory(data.address,data.subAddress, state);
+    DCC::setAccessory(data.address, data.subAddress, state);
   EEStore::store();
 }
 ///////////////////////////////////////////////////////////////////////////////
@@ -104,8 +123,17 @@ void Turnout::load(){
 
   for(int i=0;i<EEStore::eeStore->data.nTurnouts;i++){
     EEPROM.get(EEStore::pointer(),data);
-    if (data.tStatus & STATUS_PWM) tt=create(data.id,data.tStatus & STATUS_PWMPIN, data.inactiveAngle,data.moveAngle);
-    else tt=create(data.id,data.address,data.subAddress);
+    if (data.tStatus & STATUS_PWM) {
+      // Unpack PWM values
+      int inactivePosition = (data.positionWord >> 4) & 0xfff;
+      int activePosition = ((data.positionWord & 0xf) << 8) | data.positionByte;
+      int pin = (data.tStatus & STATUS_PWMPIN);
+      int vpin = pin+IODevice::firstServoVPin;
+      tt=createServo(data.id,vpin,activePosition, inactivePosition);
+    } else if (data.address==VPIN_TURNOUT_ADDRESS) 
+      tt=create(data.id,data.subAddress);  // VPIN-based turnout
+    else
+      tt=createDCC(data.id,data.address,data.subAddress); // DCC/LCN-based turnout
     tt->data.tStatus=data.tStatus;
     EEStore::advance(sizeof(tt->data));
 #ifdef EESTOREDEBUG
@@ -135,7 +163,20 @@ void Turnout::store(){
 }
 ///////////////////////////////////////////////////////////////////////////////
 
-Turnout *Turnout::create(int id, int add, int subAdd){
+// Method for associating a turnout id with a virtual pin in IODevice space.
+// The actual creation and configuration of the pin must be done elsewhere,
+// e.g. in mySetup.h during startup of the CS.
+// TODO: Vpin is currently a byte so limited to 0-255.
+Turnout *Turnout::create(int id, VPIN vpin){
+  Turnout *tt=create(id);
+  tt->data.address = VPIN_TURNOUT_ADDRESS;
+  tt->data.tStatus=0;
+  tt->data.subAddress = vpin;
+  return(tt);
+}
+
+// Method for creating a DCC-controlled turnout.
+Turnout *Turnout::createDCC(int id, int add, int subAdd){
   Turnout *tt=create(id);
   tt->data.address=add;
   tt->data.subAddress=subAdd;
@@ -143,13 +184,43 @@ Turnout *Turnout::create(int id, int add, int subAdd){
   return(tt);
 }
 
-Turnout *Turnout::create(int id, byte pin, int activeAngle, int inactiveAngle){
+// Method for creating a PCA9685 PWM turnout.  Vpins are numbered from IODevice::firstServoVPIN
+// The pin used internally by the turnout is the number within this range.  So if firstServoVpin is 100,
+// then VPIN 100 is pin 0, VPIN 101 is pin 1 etc. up to VPIN 163 is pin 63.
+Turnout *Turnout::createServo(int id, byte vpin, int activePosition, int inactivePosition, int profile){
+  int pin = vpin - IODevice::firstServoVPin;
+  if (pin < 0 || pin >=64) return NULL; // Check valid range of servo pins
   Turnout *tt=create(id);
   tt->data.tStatus= STATUS_PWM | (pin &  STATUS_PWMPIN);
-  tt->data.inactiveAngle=inactiveAngle;
-  tt->data.moveAngle=activeAngle-inactiveAngle;
+  // Pack active/inactive positions into available space.
+  tt->data.positionWord = (inactivePosition << 4) | (activePosition >> 8); 
+                                  // inactivePosition | high 4 bits of activePosition.
+  tt->data.positionByte = activePosition & 0xff;  // low 8 bits of activeAngle.
+  // Create PWM interface object 
+  Analogue::create(vpin, vpin, activePosition, inactivePosition, profile);
   return(tt);
 }
+
+// Support for <T id SERVO pin activepos inactive pos profile>
+// and <T id DCC address subaddress>
+// and <T id VPIN pin>
+Turnout *Turnout::create(int id, int params, int16_t p[]) {
+  if (params == 5 && p[0] == 27709) { // <T id SERVO n n n n>
+    return createServo(id, p[1], p[2], p[3], p[4]);
+  } else if (params == 3 && p[0] == 6436) { // <T id DCC n n>
+    return createDCC(id, p[1], p[2]);
+  } else if (params == 2 && p[0] == -415) { // <T id VPIN n>
+    return create(id, p[1]);
+  } else if (params == 2 && p[0] == 15085) { // <T ID LED vpin>
+    return createServo(id, p[1], 4095, 0, Analogue::Fast);
+  } else if (params == 2) { // <T id n n> for DCC or LCN
+    return createDCC(id, p[0], p[1]);
+  } else if (params == 3) { // legacy <T id n n n> for Servo
+    return createServo(id, p[0], p[1], p[2]);
+  }
+  return NULL;
+}
+
 
 Turnout *Turnout::create(int id){
   Turnout *tt=get(id);
@@ -161,7 +232,7 @@ Turnout *Turnout::create(int id){
     }
   turnoutlistHash++;
   return tt;
-  }
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -169,10 +240,20 @@ Turnout *Turnout::create(int id){
 //
 #ifdef EESTOREDEBUG
 void Turnout::print(Turnout *tt) {
-    if (tt->data.tStatus & STATUS_PWM )
-      DIAG(F("Turnout %d ZeroAngle %d MoveAngle %d Status %d"),tt->data.id, tt->data.inactiveAngle, tt->data.moveAngle,tt->data.tStatus & STATUS_ACTIVE);
+  if (tt->data.tStatus & STATUS_PWM) {
+    int inactivePosition = (tt->data.positionWord >> 4) & 0xfff;
+    int activePosition = ((tt->data.positionWord & 0xf) << 8) | tt->data.positionByte;
+    int pin = (tt->data.tStatus & STATUS_PWMPIN);
+    int vpin = pin+IODevice::firstServoVPin;
+    if (activePosition == 4095 && inactivePosition == 0) 
+      DIAG(F("<H %d LED %d %d>\n"), tt->data.id, vpin, 
+          (tt->data.tStatus & STATUS_ACTIVE)!=0);
     else
-	DIAG(F("Turnout %d Addr %d Subaddr %d Status %d"),tt->data.id, tt->data.address, tt->data.subAddress,tt->data.tStatus & STATUS_ACTIVE);
+      DIAG(F("<H %d SERVO %d %d %d %d>\n"), tt->data.id, vpin, 
+          activePosition, inactivePosition, (tt->data.tStatus & STATUS_ACTIVE)!=0);
+  } else
+    DIAG(F("<H %d DCC %d %d %d>\n"), tt->data.id, tt->data.address, 
+        tt->data.subAddress, (tt->data.tStatus & STATUS_ACTIVE)!=0);
 }
 #endif
 

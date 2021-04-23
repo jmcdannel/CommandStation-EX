@@ -21,6 +21,7 @@
 #include <Arduino.h>
 #include "LiquidCrystal_I2C.h"
 #include "I2CManager.h"
+#include "DIAG.h"
 
 // When the display powers up, it is configured as follows:
 //
@@ -44,27 +45,27 @@
 LiquidCrystal_I2C::LiquidCrystal_I2C(uint8_t lcd_Addr, uint8_t lcd_cols,
                                      uint8_t lcd_rows) {
   _Addr = lcd_Addr;
-  _cols = lcd_cols;
-  _rows = lcd_rows;
+  lcdRows = lcd_rows;
+  lcdCols = lcd_cols;
+
   _backlightval = LCD_NOBACKLIGHT;
-}
 
-void LiquidCrystal_I2C::init() { init_priv(); }
-
-void LiquidCrystal_I2C::init_priv() {
   I2CManager.begin();
   I2CManager.setClock(100000L);    // PCF8574 is spec'd to 100kHz.
 
-  _displayfunction = LCD_4BITMODE | LCD_1LINE | LCD_5x8DOTS;
-  begin(_cols, _rows);
+  if (I2CManager.exists(lcd_Addr)) {
+    DIAG(F("I2C LCD found at addr x%x"), lcd_Addr);
+    _displayfunction = LCD_4BITMODE | LCD_1LINE | LCD_5x8DOTS;
+    begin();
+    backlight();
+    lcdDisplay = this;
+  }
 }
 
-void LiquidCrystal_I2C::begin(uint8_t cols, uint8_t lines) {
-  if (lines > 1) {
+void LiquidCrystal_I2C::begin() {
+  if (lcdRows > 1) {
     _displayfunction |= LCD_2LINE;
   }
-  _numlines = lines;
-  (void)cols; // Suppress compiler warning.
 
   // according to datasheet, we need at least 40ms after power rises above 2.7V
   // before sending commands. Arduino can turn on way befer 4.5V so we'll allow
@@ -112,17 +113,21 @@ void LiquidCrystal_I2C::begin(uint8_t cols, uint8_t lines) {
 }
 
 /********** high level commands, for the user! */
-void LiquidCrystal_I2C::clear() {
+void LiquidCrystal_I2C::clearNative() {
   command(LCD_CLEARDISPLAY);  // clear display, set cursor position to zero
   delayMicroseconds(2000);    // this command takes 1.52ms
 }
 
 void LiquidCrystal_I2C::setCursor(uint8_t col, uint8_t row) {
   int row_offsets[] = {0x00, 0x40, 0x14, 0x54};
-  if (row > _numlines) {
-    row = _numlines - 1;  // we count rows starting w/0
+  if (row > lcdRows) {
+    row = lcdRows - 1;  // we count rows starting w/0
   }
   command(LCD_SETDDRAMADDR | (col + row_offsets[row]));
+}
+
+void LiquidCrystal_I2C::setRowNative(byte line) {
+  setCursor(0, line);
 }
 
 // Turn the display on/off (quickly)

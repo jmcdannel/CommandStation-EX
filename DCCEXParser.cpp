@@ -344,7 +344,7 @@ void DCCEXParser::parse(Print *stream, byte *com, RingStream * ringStream)
           || ((subaddress & 0x03) != subaddress)  // invalid subaddress (limit 2 bits ) 
           || ((p[activep]  & 0x01) != p[activep]) // invalid activate 0|1
           ) break; 
-            
+          // TODO: Trigger configurable range of addresses on local VPins.
           DCC::setAccessory(address, subaddress,p[activep]==1);
         }
         return;
@@ -658,8 +658,7 @@ bool DCCEXParser::parseT(Print *stream, int16_t params, int16_t p[])
         for (Turnout *tt = Turnout::firstTurnout; tt != NULL; tt = tt->nextTurnout)
         {
             gotOne = true;
-            StringFormatter::send(stream, F("<H %d %d %d %d>\n"), tt->data.id, tt->data.address, 
-                tt->data.subAddress, (tt->data.tStatus & STATUS_ACTIVE)!=0);
+            tt->print(stream);
         }
         return gotOne; // will <X> if none found
     }
@@ -680,14 +679,11 @@ bool DCCEXParser::parseT(Print *stream, int16_t params, int16_t p[])
     }
         return true;
 
-    case 3: // <T id addr subaddr>  define turnout
-        if (!Turnout::create(p[0], p[1], p[2]))
+    default: // Anything else is handled by Turnout class.
+        if (!Turnout::create(p[0], params-1, &p[1]))
             return false;
         StringFormatter::send(stream, F("<O>\n"));
         return true;
-
-    default:
-        return false; // will <x>
     }
 }
 

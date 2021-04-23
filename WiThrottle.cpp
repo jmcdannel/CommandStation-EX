@@ -146,7 +146,7 @@ void WiThrottle::parse(RingStream * stream, byte * cmdx) {
                   // If turnout does not exist, create it
                   int addr = ((id - 1) / 4) + 1;
                   int subaddr = (id - 1) % 4;
-                  Turnout::create(id,addr,subaddr);
+                  Turnout::createDCC(id,addr,subaddr);
                   StringFormatter::send(stream, F("HmTurnout %d created\n"),id);
                 }
                 switch (cmd[3]) {

@@ -43,6 +43,10 @@ struct Sensor{
   static bool remove(int);  
   static void checkAll(Print *);
   static void printAll(Print *);
+  static unsigned int lastReadCycle; // low 16 bits of micros, holds up to 64 milliseconds
+  static const unsigned int cycleInterval = 2000; // min time between consecutive reads of each sensor in microsecs.
+  static const unsigned int minReadCount = 2; // number of consecutive reads before acting on change
+                                        // E.g. 2 x 2000 means debounce time of 4ms
 }; // Sensor
 
 #endif
