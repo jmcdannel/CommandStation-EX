@@ -27,25 +27,25 @@
 
 
 // Command parsing keywords
-const int HASH_KEYWORD_RMFT=17997;    
-const int HASH_KEYWORD_ON = 2657;
-const int HASH_KEYWORD_SCHEDULE=-9179;
-const int HASH_KEYWORD_RESERVE=11392;
-const int HASH_KEYWORD_FREE=-23052;
-const int HASH_KEYWORD_TL=2712;
-const int HASH_KEYWORD_TR=2694;
-const int HASH_KEYWORD_SET=27106;
-const int HASH_KEYWORD_RESET=26133;
-const int HASH_KEYWORD_PAUSE=-4142;
-const int HASH_KEYWORD_RESUME=27609;
-const int HASH_KEYWORD_STATUS=-25932;
+const int16_t HASH_KEYWORD_RMFT=17997;    
+const int16_t HASH_KEYWORD_ON = 2657;
+const int16_t HASH_KEYWORD_SCHEDULE=-9179;
+const int16_t HASH_KEYWORD_RESERVE=11392;
+const int16_t HASH_KEYWORD_FREE=-23052;
+const int16_t HASH_KEYWORD_TL=2712;
+const int16_t HASH_KEYWORD_TR=2694;
+const int16_t HASH_KEYWORD_SET=27106;
+const int16_t HASH_KEYWORD_RESET=26133;
+const int16_t HASH_KEYWORD_PAUSE=-4142;
+const int16_t HASH_KEYWORD_RESUME=27609;
+const int16_t HASH_KEYWORD_STATUS=-25932;
 
 // One instance of RMFT clas is used for each "thread" in the automation.
 // Each thread manages a loco on a journey through the layout, and/or may manage a scenery automation.
 // The thrrads exist in a ring, each time through loop() the next thread in the ring is serviced.
 
 // Statics 
-int RMFT2::progtrackLocoId;  // used for callback when detecting a loco on prograck
+int16_t RMFT2::progtrackLocoId;  // used for callback when detecting a loco on prograck
 bool RMFT2::diag=false;      // <D RMFT ON>  
 RMFT2 * RMFT2::loopTask=NULL; // loopTask contains the address of ONE of the tasks in a ring.
 RMFT2 * RMFT2::pausingTask=NULL; // Task causing a PAUSE. 
@@ -54,17 +54,17 @@ RMFT2 * RMFT2::pausingTask=NULL; // Task causing a PAUSE.
 byte RMFT2::flags[MAX_FLAGS];
 
 /* static */ void RMFT2::begin() { 
-  DIAG(F("\nRMFT begin\n"));
+  DIAG(F("RMFT begin"));
   DCCEXParser::setRMFTFilter(RMFT2::ComandFilter);
-  for (byte f=0;f<MAX_FLAGS;f++) flags[f]=0;
+  for (int f=0;f<MAX_FLAGS;f++) flags[f]=0;
   new RMFT2(0); // add the startup route
-  DIAG(F("\nRMFT ready\n"));
+  DIAG(F("RMFT ready"));
 }
 
 // This filter intercepst <> commands to do the following:
 // - Implement RMFT specific commands/diagnostics 
 // - Reject/modify JMRI commands that would interfere with RMFT processing 
-void RMFT2::ComandFilter(Print * stream, byte & opcode, byte & paramCount, int p[]) {
+void RMFT2::ComandFilter(Print * stream, byte & opcode, byte & paramCount, int16_t p[]) {
     (void)stream; // avoid compiler warning if we don't access this parameter 
     bool reject=false;
     switch(opcode) {
@@ -90,12 +90,12 @@ void RMFT2::ComandFilter(Print * stream, byte & opcode, byte & paramCount, int p
    }
  if (reject) {
    opcode=0;
-   if (diag) DIAG(F("\nRMFT rejects <%c>"),opcode); 
+   if (diag) DIAG(F("RMFT rejects <%c>"),opcode); 
    StringFormatter::send(stream,F("<X>"));
    }
 }
      
-bool RMFT2::parseSlash(Print * stream, byte & paramCount, int p[]) {
+bool RMFT2::parseSlash(Print * stream, byte & paramCount, int16_t p[]) {
           
           switch (p[0]) {
             case HASH_KEYWORD_PAUSE: // </ PAUSE>
@@ -111,7 +111,7 @@ bool RMFT2::parseSlash(Print * stream, byte & paramCount, int p[]) {
                  
             case HASH_KEYWORD_STATUS: // </STATUS>
                  if (paramCount!=1) return false;
-                 StringFormatter::send(stream, F("\nRMFT STATUS"));
+                 StringFormatter::send(stream, F("<* RMFT STATUS"));
                  {
                   RMFT2 * task=loopTask;
                   while(task) {
@@ -134,7 +134,7 @@ bool RMFT2::parseSlash(Print * stream, byte & paramCount, int p[]) {
                      if (flag & SENSOR_FLAG) StringFormatter::send(stream,F(" SET"));
                      }                 
                  }
-                 StringFormatter::send(stream,F("\n"));
+                 StringFormatter::send(stream,F(" *>\n"));
                  return true;
                  
             case HASH_KEYWORD_SCHEDULE: // </ SCHEDULE [cab] route >
@@ -206,7 +206,7 @@ RMFT2::RMFT2(byte route) {
         loopTask->next=this;
   }
   
-  if (diag) DIAG(F("\nRMFT created for Route %d at prog %d, next=%x, loopTask=%x\n"),route,progCounter,next,loopTask);
+  if (diag) DIAG(F("RMFT created for Route %d at prog %d, next=%x, loopTask=%x"),route,progCounter,next,loopTask);
 }
 
 
@@ -240,7 +240,7 @@ void RMFT2::driveLoco(byte speed) {
 bool RMFT2::readSensor(short id) {
   Sensor* sensor= Sensor::get(id); // real hardware sensor (-1 if not exists )
   short s= sensor? sensor->active : -1;
-  if (s==1 && diag) DIAG(F("\nRMFT Sensor %d hit\n"),id);
+  if (s==1 && diag) DIAG(F("RMFT Sensor %d hit"),id);
   return s==1;
 }
 
@@ -271,14 +271,12 @@ void RMFT2::skipIfBlock() {
 }
 
 void RMFT2::loop() {
-     //DIAG(F("\n+ pausing=%x, looptask=%x"),pausingTask,loopTask);
   
   // Round Robin call to a RMFT task each time 
      if (loopTask==NULL) return; 
      
      loopTask=loopTask->next;
-     // DIAG(F(" next=%x"),loopTask);
-  
+ 
      if (pausingTask==NULL || pausingTask==loopTask) loopTask->loop2();
 }    
 
@@ -429,7 +427,6 @@ void RMFT2::loop2() {
        break;
        
     case OPCODE_READ_LOCO1: // READ_LOCO is implemented as 2 separate opcodes
-       DCC::setProgTrackSyncMain(false);
        DCC::getLocoId(readLocoCallback);
        break;
       
@@ -464,12 +461,12 @@ void RMFT2::loop2() {
              speedo=0;
              forward=true;
              invert=false;
-             if (diag) DIAG(F("\nRMFT SETLOCO %d \n"),loco);
+             if (diag) DIAG(F("RMFT SETLOCO %d"),loco);
             }
        break;
        
        case OPCODE_ROUTE:
-          if (diag) DIAG(F("\nRMFT Starting Route %d\n"),operand);
+          if (diag) DIAG(F("RMFT Starting Route %d"),operand);
           break;
 
        case OPCODE_PAD:
@@ -477,7 +474,7 @@ void RMFT2::loop2() {
        break;
     
     default:
-      DIAG(F("\nRMFT Opcode %d not supported\n"),opcode);
+      DIAG(F("RMFT Opcode %d not supported at offset %d"),opcode,progCounter);
     }
     // Falling out of the switch means move on to the next opcode
     progCounter+=2;
