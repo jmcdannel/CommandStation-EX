@@ -71,7 +71,7 @@ void MCP23017::_write(VPIN vpin, int value) {
   #ifdef DIAG_IO
   //DIAG(F("MCP23017 Write I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress+deviceIndex, (int)pin, value);
   #endif
-  uint8_t mask = 1 << pin;
+  uint8_t mask = 1 << (pin % 8);
 
   if (deviceIndex < 8) {
     if (value) 
@@ -113,7 +113,7 @@ int MCP23017::_read(VPIN vpin) {
   int pin = vpin-_firstID;
   int deviceIndex = pin / 16;
   pin %= 16;
-  uint8_t mask = 1 << (pin % 16);
+  uint8_t mask = 1 << (pin % 8);
   if (pin < 8) {
     // Set port mode input
     if (!(_portModeA[deviceIndex] & mask)) {
