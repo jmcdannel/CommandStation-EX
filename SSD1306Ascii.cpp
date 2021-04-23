@@ -81,10 +81,11 @@ static const uint8_t SH1106_PUMP_ON = 0x8B;
 static const uint8_t SH1106_PUMP_OFF = 0x8A;
 //------------------------------------------------------------------------------
 
-// Maximum number of bytes we can send per transmission is 32.
-const uint8_t SSD1306AsciiWire::blankPixels[16] = 
+// Sequence of blank pixels, to optimise clearing screen.
+// Send a maximum of 30 pixels per transmission.
+const uint8_t FLASH SSD1306AsciiWire::blankPixels[30] = 
   {0x40,        // First byte specifies data mode
-  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};  
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};  
 
 //==============================================================================
 // SSD1306AsciiWire Method Definitions
@@ -122,13 +123,11 @@ SSD1306AsciiWire::SSD1306AsciiWire(int width, int height) {
 /* Clear screen by writing blank pixels. */
 void SSD1306AsciiWire::clearNative() {
   const int maxBytes = sizeof(blankPixels);  // max number of bytes sendable over Wire
-  // Ensure only rows on display will be cleared.
-  if (rowEnd >= displayRows()) rowEnd = displayRows() - 1;
-  for (uint8_t r = rowStart; r <= rowEnd; r++) {
-    setCursor(columnStart, r);   // Position at start of row to be erased
-    for (uint8_t c = columnStart; c <= columnEnd; c += maxBytes-1) {
-      uint8_t len = min((uint8_t)(columnEnd-c+1), maxBytes-1) + 1;
-      I2CManager.write(m_i2cAddr, blankPixels, len);  // Write up to 15 blank columns
+  for (uint8_t r = 0; r <= m_displayHeight/8 - 1; r++) {
+    setRowNative(r);   // Position at start of row to be erased
+    for (uint8_t c = 0; c <= m_displayWidth - 1; c += maxBytes-1) {
+      uint8_t len = min(m_displayWidth-c, maxBytes-1) + 1;
+      I2CManager.write_P(m_i2cAddr, blankPixels, len);  // Write a number of blank columns
     }
   }
 }
