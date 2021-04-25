@@ -321,21 +321,21 @@ int MiniTwoWire::read(void)
 // must be called in:
 // slave rx event callback
 // or after requestFrom(address, numBytes)
-int MiniTwoWire::peek(void)
-{
-  int value = -1;
+// int MiniTwoWire::peek(void)
+// {
+//   int value = -1;
   
-  if(rxBufferIndex < rxBufferLength){
-    value = rxBuffer[rxBufferIndex];
-  }
+//   if(rxBufferIndex < rxBufferLength){
+//     value = rxBuffer[rxBufferIndex];
+//   }
 
-  return value;
-}
+//   return value;
+// }
 
-void MiniTwoWire::flush(void)
-{
-  // XXX: to be implemented.
-}
+// void MiniTwoWire::flush(void)
+// {
+//   // XXX: to be implemented.
+// }
 
 // behind the scenes function that is called when data is received
 void MiniTwoWire::onReceiveService(uint8_t* inBytes, int numBytes)
@@ -378,16 +378,16 @@ void MiniTwoWire::onRequestService(void)
 }
 
 // sets function called on slave write
-void MiniTwoWire::onReceive( void (*function)(int) )
-{
-  user_onReceive = function;
-}
+// void MiniTwoWire::onReceive( void (*function)(int) )
+// {
+//   user_onReceive = function;
+// }
 
-// sets function called on slave read
-void MiniTwoWire::onRequest( void (*function)(void) )
-{
-  user_onRequest = function;
-}
+// // sets function called on slave read
+// void MiniTwoWire::onRequest( void (*function)(void) )
+// {
+//   user_onRequest = function;
+// }
 
 // Preinstantiate Objects //////////////////////////////////////////////////////
 

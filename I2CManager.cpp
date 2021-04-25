@@ -23,16 +23,16 @@
 
 #if defined(ARDUINO_ARCH_AVR) 
 #include "MiniWire.h"  // Cut-down Wire library with asynchronous transmission
-#define Wire MiniWire
 #else
 #include <Wire.h>    // Standard Wire library
+#define MiniWire Wire
 #endif
 
 // If not already initialised, initialise I2C (wire).
 void I2CManagerClass::begin(void) {
   if (!_beginCompleted) {
     _beginCompleted = true;
-    Wire.begin();
+    MiniWire.begin();
 
     // Probe and list devices.
     bool found = false;
@@ -52,33 +52,33 @@ void I2CManagerClass::setClock(uint32_t speed) {
   if (speed < _clockSpeed && !_clockSpeedFixed) {
     _clockSpeed = speed;
   }
-  Wire.setClock(_clockSpeed);
+  MiniWire.setClock(_clockSpeed);
 }
 
 // Force clock speed to that specified.  It can then only 
-// be overridden by calling Wire.setClock directly.
+// be overridden by calling MiniWire.setClock directly.
 void I2CManagerClass::forceClock(uint32_t speed) {
   if (!_clockSpeedFixed) {
     _clockSpeed = speed;
     _clockSpeedFixed = true;
-    Wire.setClock(_clockSpeed);
+    MiniWire.setClock(_clockSpeed);
   }
 }
 
 // Check if specified I2C address is responding.
 // Returns 0 if OK, or error code.
 uint8_t I2CManagerClass::checkAddress(uint8_t address) {
-  Wire.beginTransmission(address);
-  return Wire.endTransmission();
+  MiniWire.beginTransmission(address);
+  return MiniWire.endTransmission();
 }
 
 // Write a complete transmission to I2C using a supplied buffer of data
 uint8_t I2CManagerClass::write(uint8_t address, const uint8_t buffer[], uint8_t size) {
-  Wire.beginTransmission(address);
-  Wire.write(buffer, size);
-#if defined(Wire)   // Wire is defined as a macro if MiniWire is in use
+  MiniWire.beginTransmission(address);
+  MiniWire.write(buffer, size);
+#if !defined(MiniWire)   // MiniWire is defined as a macro if Wire is in use
   // Write without waiting for completion
-  return Wire.endTransmission(true, true);
+  return MiniWire.endTransmission(true, true);
 #else
   return Wire.endTransmission();
 #endif
@@ -116,14 +116,14 @@ uint8_t I2CManagerClass::write(uint8_t address, int nBytes, ...) {
 uint8_t I2CManagerClass::read(uint8_t address, uint8_t readBuffer[], uint8_t readSize,
                               uint8_t writeBuffer[], uint8_t writeSize) {
   if (writeSize > 0) {
-    Wire.beginTransmission(address);
-    Wire.write(writeBuffer, writeSize);
-    Wire.endTransmission(false); // Don't free bus yet
+    MiniWire.beginTransmission(address);
+    MiniWire.write(writeBuffer, writeSize);
+    MiniWire.endTransmission(false); // Don't free bus yet
   }
-  Wire.requestFrom(address, (size_t)readSize);
+  MiniWire.requestFrom(address, (size_t)readSize);
   uint8_t nBytes = 0;
-  while (Wire.available() && nBytes < readSize) 
-    readBuffer[nBytes++] = Wire.read();
+  while (MiniWire.available() && nBytes < readSize) 
+    readBuffer[nBytes++] = MiniWire.read();
   return nBytes;
 }
 

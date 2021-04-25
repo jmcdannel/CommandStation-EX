@@ -162,14 +162,11 @@ int MCP23017::_read(VPIN vpin) {
 void MCP23017::_loop(unsigned long currentMicros) {
   (void)currentMicros;  // suppress compiler not-used warning.
 #ifdef MCP23017_OPTIMISE
-  // Process every time
+  // Process every tick time
   if (currentMicros - _lastLoopEntry > _portTickTime) {
-    int elapsedTicks = (currentMicros - _lastLoopEntry) / _portTickTime;
     for (int deviceIndex=0; deviceIndex < _nModules; deviceIndex++) {
-      if (_portCounter[deviceIndex] > elapsedTicks)
-        _portCounter[deviceIndex]-= elapsedTicks;
-      else 
-        _portCounter[deviceIndex] = 0;
+      if (_portCounter[deviceIndex] > 0)
+        _portCounter[deviceIndex]--;
     }
     _lastLoopEntry = currentMicros;
   }

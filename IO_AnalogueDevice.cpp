@@ -159,14 +159,14 @@ void Analogue::updatePosition() {
   }
   // Write to PWM module.  Use writeDownstream.
   if (changed) {
-    IODevice::writeDownstream(_devicePin, _currentPosition);
+    writeDownstream(_devicePin, _currentPosition);
   } else if (_stepNumber < _numSteps + _catchupSteps) {
     // We've finished animation, wait a little to allow servo to catch up
     _stepNumber++;
   } else if (_stepNumber == _numSteps + _catchupSteps 
             && _currentPosition != 4095 && _currentPosition != 0) {
     // Then switch off PWM to prevent annoying servo buzz
-    IODevice::writeDownstream(_devicePin, 0);
+    writeDownstream(_devicePin, 0);
     _stepNumber++;
   }
 }
