@@ -152,8 +152,8 @@ void LiquidCrystal_I2C::backlight(void) {
   expanderWrite(0);
 }
 
-size_t LiquidCrystal_I2C::writeNative(uint8_t c) {
-  send(c, Rs);
+size_t LiquidCrystal_I2C::write(uint8_t value) {
+  send(value, Rs);
   return 1;
 }
 
