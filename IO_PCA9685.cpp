@@ -56,6 +56,17 @@ IODevice *PCA9685::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
   return dev;
 }
 
+// Configure a port on the PCA9685.  This uses the Analogue class
+bool PCA9685::_configure(VPIN vpin, int paramCount, int params[]) {
+  if (paramCount != 4) return false;
+  int activePosition = params[0];
+  int inactivePosition = params[1];
+  int profile = params[2];
+  int initialState = params[3];
+  Analogue::create(vpin, vpin, activePosition, inactivePosition, profile, initialState);
+  return true;
+}
+
 // Constructor
 PCA9685::PCA9685() {}
 

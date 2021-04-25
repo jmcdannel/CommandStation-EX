@@ -67,10 +67,10 @@ void IODevice::begin() {
   PCA9685::create(IODevice::firstServoVPin, 32, 0x40);
   // Predefine four PCF8574 modules 0x20-0x23
   // Allocates 32 pins 132-163
-  PCF8574::create(IODevice::firstServoVPin+32, 32, 0x20);
+  //PCF8574::create(IODevice::firstServoVPin+32, 32, 0x20);
   // Predefine two MCP23017 modules 0x24-0x25
   // Allocates 32 pins 164-x195
-  MCP23017::create(IODevice::firstServoVPin+64, 32, 0x24);
+  MCP23017::create(IODevice::firstServoVPin+64, 16, 0x20);
 #endif
 }
 

@@ -126,7 +126,6 @@ int MCP23008::_read(VPIN vpin) {
     _portInputState[deviceIndex] = readRegister(_I2CAddress+deviceIndex, REG_GPIO);
 #ifdef MCP23008_OPTIMISE
     _portCounter[deviceIndex] = _minTicksBetweenPortReads;
-    _counterSet = true;
 #endif
   }
   if (_portInputState[deviceIndex] & mask) 
@@ -147,18 +146,12 @@ void MCP23008::_loop(unsigned long currentMicros) {
 #ifdef MCP23008_OPTIMISE
   // Process every time
   if (currentMicros - _lastLoopEntry > _portTickTime) {
-    if (_counterSet) { // Check if one or more counters needs processing
-      int elapsedTicks = (currentMicros - _lastLoopEntry) / _portTickTime;
-      bool counterSetThisTime = false;
-      for (int deviceIndex=0; deviceIndex < _nModules; deviceIndex++) {
-        if (_portCounter[deviceIndex] > elapsedTicks)
-          _portCounter[deviceIndex]-= elapsedTicks;
-        else 
-          _portCounter[deviceIndex] = 0;
-        if (_portCounter[deviceIndex] > 0)
-          counterSetThisTime = true;
-      }
-      if (!counterSetThisTime) _counterSet = false;
+    int elapsedTicks = (currentMicros - _lastLoopEntry) / _portTickTime;
+    for (int deviceIndex=0; deviceIndex < _nModules; deviceIndex++) {
+      if (_portCounter[deviceIndex] > elapsedTicks)
+        _portCounter[deviceIndex]-= elapsedTicks;
+      else 
+        _portCounter[deviceIndex] = 0;
     }
     _lastLoopEntry = currentMicros;
   }

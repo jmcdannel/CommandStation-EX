@@ -109,7 +109,6 @@ int PCF8574::_read(VPIN vpin) {
     _portInputState[deviceIndex] = inBuffer;
 #ifdef PCF8574_OPTIMISE
     _portCounter[deviceIndex] = _minTicksBetweenPortReads;
-    _counterSet = true;
 #endif
   }
   if (_portInputState[deviceIndex] & mask) 
@@ -130,18 +129,12 @@ void PCF8574::_loop(unsigned long currentMicros) {
 #ifdef PCF8574_OPTIMISE
   // Process every time
   if (currentMicros - _lastLoopEntry > _portTickTime) {
-    if (_counterSet) { // Check if one or more counters needs processing
-      int elapsedTicks = (currentMicros - _lastLoopEntry) / _portTickTime;
-      bool counterSetThisTime = false;
-      for (int deviceIndex=0; deviceIndex < _nModules; deviceIndex++) {
-        if (_portCounter[deviceIndex] > elapsedTicks)
-          _portCounter[deviceIndex]-= elapsedTicks;
-        else 
-          _portCounter[deviceIndex] = 0;
-        if (_portCounter[deviceIndex] > 0)
-          counterSetThisTime = true;
-      }
-      if (!counterSetThisTime) _counterSet = false;
+    int elapsedTicks = (currentMicros - _lastLoopEntry) / _portTickTime;
+    for (int deviceIndex=0; deviceIndex < _nModules; deviceIndex++) {
+      if (_portCounter[deviceIndex] > elapsedTicks)
+        _portCounter[deviceIndex]-= elapsedTicks;
+      else 
+        _portCounter[deviceIndex] = 0;
     }
     _lastLoopEntry = currentMicros;
   }

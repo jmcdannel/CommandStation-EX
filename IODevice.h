@@ -111,7 +111,7 @@ protected:
   // Method to configure device (optionally implemented within device class)
   virtual bool _configure(VPIN vpin, int paramCount, int params[]) { 
     (void)vpin; (void)paramCount; (void)params; // Suppress compiler warning.
-    return true; 
+    return false;
   };
 
   // Method to write new state (optionally implemented within device class)
@@ -177,6 +177,7 @@ private:
   PCA9685();
   // Device-specific initialisation
   void _begin();
+  bool _configure(VPIN vpin, int paramCount, int params[]);
   // Device-specific write function.
   void _write(VPIN vpin, int value);
   void _display();
@@ -218,10 +219,8 @@ private:
   uint8_t _portInputState[_maxModules]; 
   uint8_t _portOutputState[_maxModules];
   uint8_t _portCounter[_maxModules];
-  // Flag that at least one _portCounter is nonzero.
-  bool _counterSet;
   // Interval between ticks when counters are updated
-  static const int _portTickTime = 500;
+  static const int _portTickTime = 512; // Make a power of two to avoid slow divisions!
   // Number of ticks to elapse before cached port values expire.
   static const int _minTicksBetweenPortReads = 2;
   unsigned long _lastLoopEntry = 0;
@@ -247,29 +246,38 @@ private:
   void _write(VPIN vpin, int value);
   // Device-specific read function.
   int _read(VPIN vpin);
+  // Device-specific loop function
+  void _loop(unsigned long currentMicros);
   // Device specific identification function
   void _display();
   // Helper functions
   void writeRegister(uint8_t I2CAddress, uint8_t reg, uint8_t value) ;
-  uint8_t readRegister(uint8_t I2CAddress, uint8_t reg);
+  void writeRegister2(uint8_t I2CAddress, uint8_t reg, uint8_t valueA, uint8_t valueB) ;
+  uint16_t readRegister2(uint8_t I2CAddress, uint8_t reg);
 
   uint8_t _I2CAddress;
   uint8_t _nModules;
   static const int _maxModules = 8;
-  uint8_t _currentPortStateA[_maxModules];
-  uint8_t _currentPortStateB[_maxModules];
+  uint16_t _currentPortState[_maxModules];  // GPIOA in LSB and GPIOB in MSB
   uint8_t _portModeA[_maxModules];
   uint8_t _portModeB[_maxModules];
   uint8_t _portPullupA[_maxModules];
   uint8_t _portPullupB[_maxModules];
+  uint8_t _portCounter[_maxModules];
+  // Interval between ticks when counters are updated
+  static const int _portTickTime = 512; // Make a power of two to avoid slow divisions!
+  // Number of ticks to elapse before cached port values expire.
+  static const int _minTicksBetweenPortReads = 2;
+  unsigned long _lastLoopEntry = 0;
 
   enum {
     IODIRA = 0x00,
     IODIRB = 0x01,
-    GPIOA = 0x12,
-    GPIOB = 0x13,
+    IOCON = 0x0A,
     GPPUA = 0x0C,
-    GPPUB = 0x0D
+    GPPUB = 0x0D,
+    GPIOA = 0x12,
+    GPIOB = 0x13
   };
 };
 
@@ -309,10 +317,8 @@ private:
   uint8_t _portInputState[_maxModules]; 
   uint8_t _portOutputState[_maxModules];
   uint8_t _portCounter[_maxModules];
-  // Flag that at least one _portCounter is nonzero.
-  bool _counterSet;
   // Interval between ticks when counters are updated
-  static const int _portTickTime = 500;
+  static const int _portTickTime = 512; // Make a power of two to avoid slow divisions!
   // Number of ticks to elapse before cached port values expire.
   static const int _minTicksBetweenPortReads = 2;
   unsigned long _lastLoopEntry = 0;
