@@ -54,7 +54,6 @@ RMFT2 * RMFT2::pausingTask=NULL; // Task causing a PAUSE.
 byte RMFT2::flags[MAX_FLAGS];
 
 /* static */ void RMFT2::begin() { 
-  DIAG(F("RMFT begin"));
   DCCEXParser::setRMFTFilter(RMFT2::ComandFilter);
   for (int f=0;f<MAX_FLAGS;f++) flags[f]=0;
   new RMFT2(0); // add the startup route
@@ -90,7 +89,6 @@ void RMFT2::ComandFilter(Print * stream, byte & opcode, byte & paramCount, int16
    }
  if (reject) {
    opcode=0;
-   if (diag) DIAG(F("RMFT rejects <%c>"),opcode); 
    StringFormatter::send(stream,F("<X>"));
    }
 }

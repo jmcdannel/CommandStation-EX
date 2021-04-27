@@ -1,5 +1,7 @@
 #ifndef RMFT_H
 #define RMFT_H
+
+#if __has_include ( "myAutomation.h")
 #include "RMFT2.h"
 
 class RMFT {
@@ -8,7 +10,6 @@ class RMFT {
    static void inline loop() {RMFT2::loop();}
 };
 
-#if __has_include ( "myAutomation.h")
   #include "myAutomation.h"
   #define RMFT_ACTIVE
 #endif
