@@ -39,8 +39,16 @@ IODevice *MCP23008::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
   MCP23008 *dev = new MCP23008();
   dev->_firstID = vpin;
   dev->_nPins = min(nPins, 8*8);
-  dev->_nModules = (dev->_nPins + 7) / 8; // Number of modules in use.
+  uint8_t nModules = (dev->_nPins + 7) / 8; // Number of modules in use.
+  dev->_nModules = nModules;
   dev->_I2CAddress = I2CAddress;
+  // Allocate memory for module state
+  uint8_t *blockStart = (uint8_t *)calloc(5, nModules);
+  dev->_portDirection = blockStart;
+  dev->_portPullup = blockStart + nModules;
+  dev->_portInputState = blockStart + 2*nModules;
+  dev->_portOutputState = blockStart + 3*nModules;
+  dev->_portCounter = blockStart + 4*nModules;
   addDevice(dev);
   return dev;
 }

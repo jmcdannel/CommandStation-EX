@@ -63,7 +63,7 @@ bool PCA9685::_configure(VPIN vpin, int paramCount, int params[]) {
   int inactivePosition = params[1];
   int profile = params[2];
   int initialState = params[3];
-  Analogue::create(vpin, vpin, activePosition, inactivePosition, profile, initialState);
+  Analogue::create(vpin, activePosition, inactivePosition, profile, initialState);
   return true;
 }
 

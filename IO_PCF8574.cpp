@@ -34,7 +34,13 @@ IODevice *PCF8574::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
   PCF8574 *dev = new PCF8574();
   dev->_firstID = vpin;
   dev->_nPins = min(nPins, 8*8);
-  dev->_nModules = (dev->_nPins + 7) / 8; // Number of modules in use.
+  uint8_t nModules = (dev->_nPins + 7) / 8; // Number of modules in use.
+  dev->_nModules = nModules;
+  // Allocate memory for module state
+  uint8_t *blockAddress = (uint8_t *)calloc(3, nModules);
+  dev->_portInputState = blockAddress;
+  dev->_portOutputState = blockAddress + nModules;
+  dev->_portCounter = blockAddress + 2*nModules;
   dev->_I2CAddress = I2CAddress;
   addDevice(dev);
   return dev;

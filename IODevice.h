@@ -216,13 +216,13 @@ private:
   // Maximum number of PCF8574 modules supported.
   uint8_t _nModules;
   static const int _maxModules = 8;
-  uint8_t _portInputState[_maxModules]; 
-  uint8_t _portOutputState[_maxModules];
-  uint8_t _portCounter[_maxModules];
+  uint8_t *_portInputState; 
+  uint8_t *_portOutputState;
+  uint8_t *_portCounter;
   // Interval between ticks when counters are updated
-  static const int _portTickTime = 512; // Make a power of two to avoid slow divisions!
+  static const int _portTickTime = 500;
   // Number of ticks to elapse before cached port values expire.
-  static const int _minTicksBetweenPortReads = 2;
+  static const int _minTicksBetweenPortReads = 4;
   unsigned long _lastLoopEntry = 0;
 };
 
@@ -258,16 +258,16 @@ private:
   uint8_t _I2CAddress;
   uint8_t _nModules;
   static const int _maxModules = 8;
-  uint16_t _currentPortState[_maxModules];  // GPIOA in LSB and GPIOB in MSB
-  uint8_t _portModeA[_maxModules];
-  uint8_t _portModeB[_maxModules];
-  uint8_t _portPullupA[_maxModules];
-  uint8_t _portPullupB[_maxModules];
-  uint8_t _portCounter[_maxModules];
+  uint16_t *_currentPortState;  // GPIOA in LSB and GPIOB in MSB
+  uint8_t *_portModeA;
+  uint8_t *_portModeB;
+  uint8_t *_portPullupA;
+  uint8_t *_portPullupB;
+  uint8_t *_portCounter;
   // Interval between ticks when counters are updated
-  static const int _portTickTime = 512; // Make a power of two to avoid slow divisions!
+  static const int _portTickTime = 500;
   // Number of ticks to elapse before cached port values expire.
-  static const int _minTicksBetweenPortReads = 2;
+  static const int _minTicksBetweenPortReads = 4;
   unsigned long _lastLoopEntry = 0;
 
   enum {
@@ -312,15 +312,16 @@ private:
   // Maximum number of MCP23008 modules supported.
   uint8_t _nModules;
   static const int _maxModules = 8;
-  uint8_t _portDirection[_maxModules];
-  uint8_t _portPullup[_maxModules];
-  uint8_t _portInputState[_maxModules]; 
-  uint8_t _portOutputState[_maxModules];
-  uint8_t _portCounter[_maxModules];
+  // Arrays per module
+  uint8_t *_portDirection;
+  uint8_t *_portPullup;
+  uint8_t *_portInputState; 
+  uint8_t *_portOutputState;
+  uint8_t *_portCounter;
   // Interval between ticks when counters are updated
-  static const int _portTickTime = 512; // Make a power of two to avoid slow divisions!
+  static const int _portTickTime = 500;
   // Number of ticks to elapse before cached port values expire.
-  static const int _minTicksBetweenPortReads = 2;
+  static const int _minTicksBetweenPortReads = 4;
   unsigned long _lastLoopEntry = 0;
 };
 

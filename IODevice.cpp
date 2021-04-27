@@ -65,18 +65,18 @@ void IODevice::begin() {
   // Predefine two PCA9685 modules 0x40-0x41
   // Allocates 32 pins 100-131
   PCA9685::create(IODevice::firstServoVPin, 32, 0x40);
-  // Predefine four PCF8574 modules 0x20-0x23
-  // Allocates 32 pins 132-163
-  //PCF8574::create(IODevice::firstServoVPin+32, 32, 0x20);
-  // Predefine two MCP23017 modules 0x24-0x25
+  // Predefine one PCF8574 module 0x23
+  // Allocates 8 pins 132-139
+  PCF8574::create(IODevice::firstServoVPin+32, 8, 0x23);
+  // Predefine two MCP23017 modules 0x20-0x21
   // Allocates 32 pins 164-x195
-  MCP23017::create(IODevice::firstServoVPin+64, 16, 0x20);
+  MCP23017::create(IODevice::firstServoVPin+64, 32, 0x20);
 #endif
 }
 
 // Overarching static loop() method for the IODevice subsystem.  Works through the
 // list of installed devices and calls their individual _loop() method.
-// Devices may not implement this, but if they do it is useful for things like animations 
+// Devices may or may not implement this, but if they do it is useful for things like animations 
 // or flashing LEDs.
 // The current value of micros() is passed as a parameter, so the called loop function
 // doesn't need to invoke it.
@@ -95,13 +95,13 @@ void IODevice::loop() {
   static unsigned long count = 0;
   unsigned long elapsed = currentMicros - lastMicros;
   // Ignore long loop counts while message is still outputting
-  if (currentMicros - lastOutputTime > 3000) {
+  if (currentMicros - lastOutputTime > 3000UL) {
     if (elapsed > maxElapsed) maxElapsed = elapsed;
   }
   count++;
-  if (currentMicros - lastOutputTime > 5000000L) {
+  if (currentMicros - lastOutputTime > 5000000UL) {
     if (lastOutputTime > 0) 
-      DIAG(F("Looptime Max=%dus, Ave=%dus"), (int)maxElapsed, (int)((unsigned long)5000000L/count));
+      DIAG(F("Looptime Max=%dus, Ave=%dus"), (int)maxElapsed, (int)((unsigned long)5000000UL/count));
     maxElapsed = 0;
     count = 0;
     lastOutputTime = currentMicros;
@@ -156,7 +156,8 @@ void IODevice::_display() {
   DIAG(F("Unknown device VPins:%d-%d"), (int)_firstID, (int)_firstID+_nPins-1);
 }
 
-// Find device and pass configuration values on to it.  Return false if not found.
+// Find device associated with nominated Vpin and pass configuration values on to it.
+//   Return false if not found.
 bool IODevice::configure(VPIN vpin, int paramCount, int params[]) {
   for (IODevice *dev = _firstDevice; dev != 0; dev = dev->_nextDevice) {
     if (dev->owns(vpin)) {

@@ -30,8 +30,17 @@ IODevice *MCP23017::createInstance(VPIN firstID, int nPins, uint8_t I2CAddress) 
   MCP23017 *dev = new MCP23017();
   dev->_firstID = firstID;
   dev->_nPins = min(nPins, 16*8);
-  dev->_nModules = (nPins+15)/16;
+  uint8_t nModules = (nPins+15)/16;
+  dev->_nModules  = nModules;
   dev->_I2CAddress = I2CAddress;
+  // Allocate memory for module state
+  uint8_t *blockStart = (uint8_t *)calloc(7, nModules);
+  dev->_currentPortState = (uint16_t *)blockStart;  // two bytes per module
+  dev->_portModeA = blockStart + 2*nModules; // one byte per module
+  dev->_portModeB = blockStart + 3*nModules; // one byte per module
+  dev->_portPullupA = blockStart + 4*nModules; // one byte per module
+  dev->_portPullupB = blockStart + 5*nModules; // one byte per module
+  dev->_portCounter = blockStart + 6*nModules; // one byte per module
   addDevice(dev);
   return dev;
 }
@@ -98,6 +107,9 @@ void MCP23017::_write(VPIN vpin, int value) {
       writeRegister(address, IODIRB, _portModeB[deviceIndex]);
     }
   }
+  // Assume that writing to the port invalidates any cached read, so set the port counter to 0
+  //  to force the port to be refreshed next time a read is issued.
+  _portCounter[deviceIndex] = 0;
 }
 
 // Device-specific read function.
