@@ -35,21 +35,19 @@ IODevice *Analogue::createInstance(VPIN vpin) {
   return dev; 
 }
 
-void Analogue::create(VPIN vpin, VPIN devicePin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t initialState) {
+void Analogue::create(VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t initialState) {
   Analogue *dev = (Analogue *)createInstance(vpin);
   dev->_state = initialState;
-  dev->_configure(vpin, devicePin, activePosition, inactivePosition, profile);
+  dev->_configure(vpin, activePosition, inactivePosition, profile);
 }
 
 //==================================================================================================================
 // Instance members
 //------------------------------------------------------------------------------------------------------------------
-void Analogue::_configure(VPIN vpin, VPIN devicePin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile) {
-  (void)vpin;    // Suppress compiler warning
+void Analogue::_configure(VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile) {
   #ifdef DIAG_IO
-  DIAG(F("Analogue configure Vpin:%d->Vpin:%d %d-%d %d"), vpin, devicePin, activePosition, inactivePosition, profile);
+  DIAG(F("Analogue configure Vpin:%d %d-%d %d"), vpin, activePosition, inactivePosition, profile);
   #endif
-  _devicePin = devicePin;
   _activePosition = activePosition;
   _inactivePosition = inactivePosition;
   _currentPosition = _state ? activePosition : inactivePosition;
@@ -70,11 +68,11 @@ void Analogue::_loop(unsigned long currentMicros) {
   }
 }
 
-// Device params are devicePin, activePosition, inactivePosition, and profile.
+// Device params are activePosition, inactivePosition, and profile.
 bool Analogue::_configure(VPIN vpin, int paramCount, int params[]) {
   (void)vpin;  // Suppress compiler warning
   if (paramCount != 4) return false;
-  _configure(vpin, params[0], params[1], params[2], (ProfileType)params[3]);
+  _configure(vpin, params[0], params[1], (ProfileType)params[2]);
   return true;
 }
 
@@ -126,8 +124,8 @@ void Analogue::_write(VPIN vpin, int value) {
 }
 
 void Analogue::_display() {
-  DIAG(F("Analogue VPin:%d->VPin:%d Range:%d,%d"), 
-    _firstID, _devicePin, _activePosition, _inactivePosition);
+  DIAG(F("Analogue VPin:%d Range:%d,%d"), 
+    _firstID, _activePosition, _inactivePosition);
 }
 
 // Private function to reposition servo
@@ -159,14 +157,14 @@ void Analogue::updatePosition() {
   }
   // Write to PWM module.  Use writeDownstream.
   if (changed) {
-    IODevice::writeDownstream(_devicePin, _currentPosition);
+    writeDownstream(_firstID, _currentPosition);
   } else if (_stepNumber < _numSteps + _catchupSteps) {
     // We've finished animation, wait a little to allow servo to catch up
     _stepNumber++;
   } else if (_stepNumber == _numSteps + _catchupSteps 
             && _currentPosition != 4095 && _currentPosition != 0) {
     // Then switch off PWM to prevent annoying servo buzz
-    IODevice::writeDownstream(_devicePin, 0);
+    writeDownstream(_firstID, 0);
     _stepNumber++;
   }
 }

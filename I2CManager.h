@@ -59,8 +59,8 @@ public:
   // Write a transmission to I2C from a list of bytes.
   uint8_t write(uint8_t address, int nBytes, ...);
   // Write a command from an array in RAM and read response
-  uint8_t read(uint8_t address, uint8_t writeBuffer[], uint8_t writeSize, 
-    uint8_t readBuffer[], uint8_t readSize);
+  uint8_t read(uint8_t address, uint8_t readBuffer[], uint8_t readSize, 
+    uint8_t writeBuffer[], uint8_t writeSize);
   // Write a command from an arbitrary list of bytes and read response
   uint8_t read(uint8_t address, uint8_t readBuffer[], uint8_t readSize, 
     uint8_t writeSize, ...);

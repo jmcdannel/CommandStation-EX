@@ -39,8 +39,16 @@ IODevice *MCP23008::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
   MCP23008 *dev = new MCP23008();
   dev->_firstID = vpin;
   dev->_nPins = min(nPins, 8*8);
-  dev->_nModules = (dev->_nPins + 7) / 8; // Number of modules in use.
+  uint8_t nModules = (dev->_nPins + 7) / 8; // Number of modules in use.
+  dev->_nModules = nModules;
   dev->_I2CAddress = I2CAddress;
+  // Allocate memory for module state
+  uint8_t *blockStart = (uint8_t *)calloc(5, nModules);
+  dev->_portDirection = blockStart;
+  dev->_portPullup = blockStart + nModules;
+  dev->_portInputState = blockStart + 2*nModules;
+  dev->_portOutputState = blockStart + 3*nModules;
+  dev->_portCounter = blockStart + 4*nModules;
   addDevice(dev);
   return dev;
 }
@@ -126,7 +134,6 @@ int MCP23008::_read(VPIN vpin) {
     _portInputState[deviceIndex] = readRegister(_I2CAddress+deviceIndex, REG_GPIO);
 #ifdef MCP23008_OPTIMISE
     _portCounter[deviceIndex] = _minTicksBetweenPortReads;
-    _counterSet = true;
 #endif
   }
   if (_portInputState[deviceIndex] & mask) 
@@ -145,20 +152,11 @@ int MCP23008::_read(VPIN vpin) {
 void MCP23008::_loop(unsigned long currentMicros) {
   (void)currentMicros;  // suppress compiler not-used warning.
 #ifdef MCP23008_OPTIMISE
-  // Process every time
+  // Process every tick time
   if (currentMicros - _lastLoopEntry > _portTickTime) {
-    if (_counterSet) { // Check if one or more counters needs processing
-      int elapsedTicks = (currentMicros - _lastLoopEntry) / _portTickTime;
-      bool counterSetThisTime = false;
-      for (int deviceIndex=0; deviceIndex < _nModules; deviceIndex++) {
-        if (_portCounter[deviceIndex] > elapsedTicks)
-          _portCounter[deviceIndex]-= elapsedTicks;
-        else 
-          _portCounter[deviceIndex] = 0;
-        if (_portCounter[deviceIndex] > 0)
-          counterSetThisTime = true;
-      }
-      if (!counterSetThisTime) _counterSet = false;
+    for (int deviceIndex=0; deviceIndex < _nModules; deviceIndex++) {
+      if (_portCounter[deviceIndex] > 0)
+        _portCounter[deviceIndex]--;
     }
     _lastLoopEntry = currentMicros;
   }

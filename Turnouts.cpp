@@ -195,17 +195,21 @@ Turnout *Turnout::createDCC(int id, int add, int subAdd){
 // The pin used internally by the turnout is the number within this range.  So if firstServoVpin is 100,
 // then VPIN 100 is pin 0, VPIN 101 is pin 1 etc. up to VPIN 163 is pin 63.  Servos generally operate 
 // over the range of 200-400 so the activePosition and inactivePosition are limited to 0-511 in range.
+// Ideally, the VPIN wouldn't be limited and probably the position wouldn't be so limited, but the 
+// problem is that there is limited space within the structure.
 Turnout *Turnout::createServo(int id, VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t initialState){
   int pin = vpin - IODevice::firstServoVPin;
   if (pin < 0 || pin >=64) return NULL; // Check valid range of servo pins
   if (activePosition > 511 || inactivePosition > 511 || profile > 4) return NULL;
+  // Configure PWM interface device
+  int deviceParams[] = {(int)activePosition, (int)inactivePosition, profile, initialState};
+  if (!IODevice::configure(vpin, sizeof(deviceParams)/sizeof(deviceParams[0]), deviceParams)) return NULL;
+
   Turnout *tt=create(id);
   tt->data.tStatus= STATUS_PWM | (pin &  STATUS_PWMPIN);
   // Pack active/inactive positions into available space.
   tt->data.positionWord = (profile << 10) | ((activePosition & 0x100) << 1) | inactivePosition; 
   tt->data.positionByte = activePosition & 0xff;  // low 8 bits of activeAngle.
-  // Create PWM interface object 
-  Analogue::create(vpin, vpin, activePosition, inactivePosition, profile, initialState);
   return(tt);
 }
 
@@ -222,7 +226,7 @@ Turnout *Turnout::create(int id, int params, int16_t p[]) {
   } else if (params == 2) { // <T id n n> for DCC or LCN
     return createDCC(id, p[0], p[1]);
   } else if (params == 3) { // legacy <T id n n n> for Servo
-    return createServo(id, (VPIN)p[0], (uint8_t)p[1], (uint8_t)p[2]);
+    return createServo(id, (VPIN)p[0], (uint16_t)p[1], (uint16_t)p[2]);
   }
   return NULL;
 }

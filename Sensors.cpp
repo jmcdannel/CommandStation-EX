@@ -88,7 +88,7 @@ void Sensor::checkAll(Print *stream){
   if (readingSensor == NULL) { 
     unsigned int thisTime = micros(); // Up to 65ms time count
     if (thisTime - lastReadCycle >= cycleInterval) {
-      // At least 1ms elapsed since last read cycle, initiate new read cycle
+      // Required time elapsed since last read cycle started, so initiate new read cycle
       readingSensor = firstSensor;
       lastReadCycle = thisTime;
     }

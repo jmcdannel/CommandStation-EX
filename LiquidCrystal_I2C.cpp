@@ -152,6 +152,11 @@ void LiquidCrystal_I2C::backlight(void) {
   expanderWrite(0);
 }
 
+size_t LiquidCrystal_I2C::writeNative(uint8_t value) {
+  send(value, Rs);
+  return 1;
+}
+
 /*********** mid level commands, for sending data/cmds */
 
 inline void LiquidCrystal_I2C::command(uint8_t value) { 

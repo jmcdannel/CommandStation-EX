@@ -34,7 +34,13 @@ IODevice *PCF8574::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
   PCF8574 *dev = new PCF8574();
   dev->_firstID = vpin;
   dev->_nPins = min(nPins, 8*8);
-  dev->_nModules = (dev->_nPins + 7) / 8; // Number of modules in use.
+  uint8_t nModules = (dev->_nPins + 7) / 8; // Number of modules in use.
+  dev->_nModules = nModules;
+  // Allocate memory for module state
+  uint8_t *blockAddress = (uint8_t *)calloc(3, nModules);
+  dev->_portInputState = blockAddress;
+  dev->_portOutputState = blockAddress + nModules;
+  dev->_portCounter = blockAddress + 2*nModules;
   dev->_I2CAddress = I2CAddress;
   addDevice(dev);
   return dev;
@@ -109,7 +115,6 @@ int PCF8574::_read(VPIN vpin) {
     _portInputState[deviceIndex] = inBuffer;
 #ifdef PCF8574_OPTIMISE
     _portCounter[deviceIndex] = _minTicksBetweenPortReads;
-    _counterSet = true;
 #endif
   }
   if (_portInputState[deviceIndex] & mask) 
@@ -128,20 +133,11 @@ int PCF8574::_read(VPIN vpin) {
 void PCF8574::_loop(unsigned long currentMicros) {
   (void)currentMicros;  // suppress compiler not-used warning.
 #ifdef PCF8574_OPTIMISE
-  // Process every time
+  // Process every tick time
   if (currentMicros - _lastLoopEntry > _portTickTime) {
-    if (_counterSet) { // Check if one or more counters needs processing
-      int elapsedTicks = (currentMicros - _lastLoopEntry) / _portTickTime;
-      bool counterSetThisTime = false;
-      for (int deviceIndex=0; deviceIndex < _nModules; deviceIndex++) {
-        if (_portCounter[deviceIndex] > elapsedTicks)
-          _portCounter[deviceIndex]-= elapsedTicks;
-        else 
-          _portCounter[deviceIndex] = 0;
-        if (_portCounter[deviceIndex] > 0)
-          counterSetThisTime = true;
-      }
-      if (!counterSetThisTime) _counterSet = false;
+    for (int deviceIndex=0; deviceIndex < _nModules; deviceIndex++) {
+      if (_portCounter[deviceIndex] > 0)
+        _portCounter[deviceIndex]--;
     }
     _lastLoopEntry = currentMicros;
   }
