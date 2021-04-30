@@ -104,7 +104,7 @@ SSD1306AsciiWire::SSD1306AsciiWire(int width, int height) {
   for (byte address = 0x3c; address <= 0x3d; address++) {
     if (I2CManager.exists(address)) {
       // Device found
-      DIAG(F("OLED display found at 0x%x"), address);
+      DIAG(F("%dx%d OLED display configured on I2C:x%x"), width, height, address);
       if (width == 132)
         begin(&SH1106_128x64, address);
       else if (height == 32)
