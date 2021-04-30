@@ -26,9 +26,9 @@
 // Constructor
 MCP23017::MCP23017() {}
 
-IODevice *MCP23017::createInstance(VPIN firstID, int nPins, uint8_t I2CAddress) {
+IODevice *MCP23017::createInstance(VPIN firstVpin, int nPins, uint8_t I2CAddress) {
   MCP23017 *dev = new MCP23017();
-  dev->_firstID = firstID;
+  dev->_firstVpin = firstVpin;
   dev->_nPins = min(nPins, 16*8);
   uint8_t nModules = (nPins+15)/16;
   dev->_nModules  = nModules;
@@ -36,11 +36,9 @@ IODevice *MCP23017::createInstance(VPIN firstID, int nPins, uint8_t I2CAddress) 
   // Allocate memory for module state
   uint8_t *blockStart = (uint8_t *)calloc(7, nModules);
   dev->_currentPortState = (uint16_t *)blockStart;  // two bytes per module
-  dev->_portModeA = blockStart + 2*nModules; // one byte per module
-  dev->_portModeB = blockStart + 3*nModules; // one byte per module
-  dev->_portPullupA = blockStart + 4*nModules; // one byte per module
-  dev->_portPullupB = blockStart + 5*nModules; // one byte per module
-  dev->_portCounter = blockStart + 6*nModules; // one byte per module
+  dev->_portMode = (uint16_t *)(blockStart + 2*nModules); // two bytes per module
+  dev->_portPullup = (uint16_t *)(blockStart + 4*nModules); // two bytes per module
+  dev->_portCounter = (uint8_t *)(blockStart + 6*nModules); // one byte per module
   addDevice(dev);
   return dev;
 }
@@ -56,56 +54,71 @@ void MCP23017::_begin() {
   for (int i=0; i<_nModules; i++) {
     uint8_t address = _I2CAddress+i;
     if (I2CManager.exists(address))
-      DIAG(F("MCP23017 on I2C:x%x"), address);
-    _portModeA[i] = 0xFF; // Default to read mode
-    _portModeB[i] = 0xFF;
-    _portPullupA[i] = 0x00; // Default to pullup disabled
-    _portPullupB[i] = 0x00;
+      DIAG(F("MCP23017 found on I2C:x%x"), address);
+    _portMode[i] = 0xFFFF; // Default to input mode
+    _portPullup[i] = 0x00; // Default to pullup disabled
     _currentPortState[i] = 0x0000;
     // Initialise device registers (in case it's warm-starting)
-    writeRegister(address, IOCON, 0x00);
-    writeRegister2(address, GPIOA, _currentPortState[i] & 0xff, _currentPortState[i]>>8);
-    writeRegister2(address, IODIRA, _portModeA[i], _portModeB[i]);
-    writeRegister2(address, GPPUA, _portPullupA[i], _portPullupB[i]);
+    writeRegister(address, REG_IOCON, 0x00);
+    writeRegister2(address, REG_GPIOA, _currentPortState[i] & 0xff, _currentPortState[i]>>8);
+    writeRegister2(address, REG_IODIRA, _portMode[i] & 0xff, _portMode[i]>>8);
+    writeRegister2(address, REG_GPPUA, _portPullup[i] & 0xff, _portPullup[i]>>8);
   }
+}
+
+// Device-specific pin configuration
+bool MCP23017::_configurePullup(VPIN vpin, bool pullup) {
+  int pin = vpin - _firstVpin;
+  #ifdef DIAG_IO
+  DIAG(F("MCP23017::_configurePullup Pin:%d Val:%d"), vpin, pullup);
+  #endif
+  int deviceIndex = pin/16;
+  pin %= 16; // Pin within device
+  uint16_t mask = 1 << pin;
+  if (pullup)
+    _portPullup[deviceIndex] |= mask;
+  else
+    _portPullup[deviceIndex] &= ~mask;
+  // Only update the register that has changed.
+  if (pin < 8)
+    I2CManager.write(_I2CAddress+deviceIndex, 2, REG_GPPUA, _portPullup[deviceIndex] & 0xff);  
+  else
+    I2CManager.write(_I2CAddress+deviceIndex, 2, REG_GPPUB, _portPullup[deviceIndex] >> 8);  
+  // Assume that writing to the port invalidates any cached read, so set the port counter to 0
+  //  to force the port to be refreshed next time a read is issued.
+  _portCounter[deviceIndex] = 0;
+  return true;
 }
   
 // Device-specific write function.
 void MCP23017::_write(VPIN vpin, int value) {
-  int pin = vpin-_firstID;
+  int pin = vpin-_firstVpin;
   int deviceIndex = pin / 16;
   uint8_t address = _I2CAddress+deviceIndex;
   pin %= 16; // Pin number within device
   #ifdef DIAG_IO
   //DIAG(F("MCP23017 Write I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress+deviceIndex, (int)pin, value);
   #endif
-  uint8_t mask = 1 << (pin % 8);
+  uint16_t mask = 1 << pin;
 
-  // Write only to registers that need to change.
-  if (pin < 8) {
-    if (value) 
-      _currentPortState[deviceIndex] |= mask;
+  if (value) 
+    _currentPortState[deviceIndex] |= mask;
+  else
+    _currentPortState[deviceIndex] &= ~mask;
+
+  // Write updated value to the appropriate port
+  if (pin < 8)
+    writeRegister(address, REG_GPIOA, _currentPortState[deviceIndex] & 0xff);
+  else
+    writeRegister(address, REG_GPIOB, _currentPortState[deviceIndex] >> 8);
+
+  // Set port mode to output if not already set
+  if (_portMode[deviceIndex] & mask) {
+    _portMode[deviceIndex] &= ~mask;
+    if (pin < 8)
+      writeRegister(address, REG_IODIRA, _portMode[deviceIndex] & 0xff);
     else
-      _currentPortState[deviceIndex] &= ~mask;
-    // Write values
-    writeRegister(address, GPIOA, _currentPortState[deviceIndex] & 0xff);
-    // Set port mode output if not already set
-    if (_portModeA[deviceIndex] & mask) {
-      _portModeA[deviceIndex] &= ~mask;
-      writeRegister(address, IODIRA, _portModeA[deviceIndex]);
-    }
-  } else {
-    if (value) 
-      _currentPortState[deviceIndex] |= ((uint16_t)mask << 8);
-    else
-      _currentPortState[deviceIndex] &= ~((uint16_t)mask << 8);
-    // Write values
-    writeRegister(address, GPIOB, (uint8_t)(_currentPortState[deviceIndex] >> 8));
-    // Set port mode output if not already set
-    if (_portModeB[deviceIndex] & mask) {
-      _portModeB[deviceIndex] &= ~mask;
-      writeRegister(address, IODIRB, _portModeB[deviceIndex]);
-    }
+      writeRegister(address, REG_IODIRB, _portMode[deviceIndex] >> 8);
   }
   // Assume that writing to the port invalidates any cached read, so set the port counter to 0
   //  to force the port to be refreshed next time a read is issued.
@@ -119,45 +132,28 @@ void MCP23017::_write(VPIN vpin, int value) {
 // but read both GPIOA/B at the same time to optimise reads.
 int MCP23017::_read(VPIN vpin) {
   int result;
-  int pin = vpin-_firstID;
+  int pin = vpin-_firstVpin;
   int deviceIndex = pin / 16;
   uint8_t address = _I2CAddress+deviceIndex;
   pin %= 16;
-  uint16_t mask = 1 << (pin % 8);
-  if (pin < 8) {
-    // Set port mode input
-    if (!(_portModeA[deviceIndex] & mask)) {
-      _portModeA[deviceIndex] |= mask;
-      writeRegister(address, IODIRA, _portModeA[deviceIndex]);
-      _portCounter[deviceIndex] = 0;
-    }
-    // Set pullup
-    if (!(_portPullupA[deviceIndex] & mask)) {
-      _portPullupA[deviceIndex] |= mask;
-      writeRegister(address, GPPUA, _portPullupA[deviceIndex]);
-      _portCounter[deviceIndex] = 0;
-    }
-  } else {
-    if (!(_portModeB[deviceIndex] & mask)) {
-      _portModeB[deviceIndex] |= mask;
-      writeRegister(address, IODIRB, _portModeB[deviceIndex]);
-      _portCounter[deviceIndex] = 0;
-    }
-    // Set pullup
-    if (!(_portPullupB[deviceIndex] & mask)) {
-      _portPullupB[deviceIndex] |= mask;
-      writeRegister(address, GPPUB, _portPullupB[deviceIndex]);
-      _portCounter[deviceIndex] = 0;
-    }
+  uint16_t mask = 1 << pin;
+  // Set port mode input
+  if (!(_portMode[deviceIndex] & mask)) {
+    _portMode[deviceIndex] |= mask;
+    if (pin < 8)
+      writeRegister(address, REG_IODIRA, _portMode[deviceIndex] & 0xff);
+    else
+      writeRegister(address, REG_IODIRB, _portMode[deviceIndex] >> 8);
+    _portCounter[deviceIndex] = 0;
   }
+  // Only read input port if cached value not available
   if (_portCounter[deviceIndex] == 0) {
     // Read both GPIO ports
-    _currentPortState[deviceIndex] = readRegister2(address, GPIOA);
+    _currentPortState[deviceIndex] = readRegister2(address, REG_GPIOA);
   #ifdef MCP23017_OPTIMISE
     _portCounter[deviceIndex] = _minTicksBetweenPortReads;
   #endif
   }
-  mask = 1 << pin;
   if (_currentPortState[deviceIndex] & mask) 
     result = 1;
   else
@@ -195,18 +191,20 @@ void MCP23017::writeRegister2(uint8_t address, uint8_t reg, uint8_t valueA, uint
   I2CManager.write(address, 3, reg, valueA, valueB);
 }
 
-// Helper function to read a register pair (e.g. GPIOA/B, IODIRA/B)
+// Helper function to read a register pair (e.g. GPIOA/B, IODIRA/B). Returns zero if error.
 uint16_t MCP23017::readRegister2(uint8_t address, uint8_t reg) {
   uint8_t buffer[2];
-  I2CManager.read(address, buffer, 2, &reg, 1);
-  uint16_t result = ((uint16_t)buffer[1] << 8) | buffer[0];
-  return result;
+  uint8_t nBytes = I2CManager.read(address, buffer, 2, &reg, 1);
+  if (nBytes == 2) 
+    return ((uint16_t)buffer[1] << 8) | buffer[0];
+  else  
+    return 0;
 }
 
 // Display details of this device.
 void MCP23017::_display() {
   for (int i=0; i<_nModules; i++) {
-    DIAG(F("MCP23017 VPins:%d-%d I2C:x%x"), (int)_firstID+i*16, 
-      (int)min(_firstID+i*16+15,_firstID+_nPins-1), (int)(_I2CAddress+i));
+    DIAG(F("MCP23017 Vpins:%d-%d I2C:x%x"), (int)_firstVpin+i*16, 
+      (int)min(_firstVpin+i*16+15,_firstVpin+_nPins-1), (int)(_I2CAddress+i));
   }
 }

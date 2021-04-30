@@ -24,7 +24,7 @@
 void DCCAccessoryDecoder::create(VPIN vpin, int DCCAddress, int DCCSubaddress) {
   IODevice::remove(vpin);
   DCCAccessoryDecoder *dev = new DCCAccessoryDecoder();
-  dev->_firstID = vpin;
+  dev->_firstVpin = vpin;
   dev->_nPins = 1;
   dev->_DCCAddress = DCCAddress;
   dev->_DCCSubaddress= DCCSubaddress;
@@ -42,7 +42,7 @@ DCCAccessoryDecoder::DCCAccessoryDecoder() {}
 
 // Device-specific write function.
 void DCCAccessoryDecoder::_write(VPIN id, int state) {
-  int subaddress = id-_firstID+_DCCSubaddress;
+  int subaddress = id-_firstVpin+_DCCSubaddress;
   #ifdef DIAG_IO
   DIAG(F("DCC Write Addr:%d Subddr:%d State:%d"), _DCCAddress, subaddress, state);
   #endif
@@ -50,7 +50,7 @@ void DCCAccessoryDecoder::_write(VPIN id, int state) {
 }
 
 void DCCAccessoryDecoder::_display() {
-  DIAG(F("DCC VPins:%d-%d Addr:%d/%d "), 
-    (int)_firstID, (int)_firstID+_nPins-1, (int)_DCCAddress, (int)_DCCSubaddress);
+  DIAG(F("DCC Vpins:%d-%d Addr:%d/%d "), 
+    (int)_firstVpin, (int)_firstVpin+_nPins-1, (int)_DCCAddress, (int)_DCCSubaddress);
 }
 

@@ -40,7 +40,7 @@ void Turnout::print(Print *stream){
     int activePosition = ((data.positionWord & 0x200) >> 1) | data.positionByte;
     int profile = (data.positionWord >> 10) & 0x7;
     int pin = (data.tStatus & STATUS_PWMPIN);
-    int vpin = pin+IODevice::firstServoVPin;
+    int vpin = pin+IODevice::firstServoVpin;
     StringFormatter::send(stream, F("<H %d SERVO %d %d %d %d %d>\n"), data.id, vpin, 
       activePosition, inactivePosition, profile, (data.tStatus & STATUS_ACTIVE)!=0);
   } else if (data.address == LCN_TURNOUT_ADDRESS) {
@@ -91,7 +91,7 @@ void Turnout::activate(bool state) {
 
   int pin = (data.tStatus & STATUS_PWMPIN);
   if (data.tStatus & STATUS_PWM) 
-    IODevice::write(pin+IODevice::firstServoVPin, state);
+    IODevice::write(pin+IODevice::firstServoVpin, state);
   else
     DCC::setAccessory(data.address, data.subAddress, state);
   EEStore::store();
@@ -136,7 +136,7 @@ void Turnout::load(){
       int activePosition = ((data.positionWord & 0x200) >> 1) | data.positionByte;
       int profile = (data.positionWord >> 10) & 0x7;
       int pin = (data.tStatus & STATUS_PWMPIN);
-      int vpin = pin+IODevice::firstServoVPin;
+      int vpin = pin+IODevice::firstServoVpin;
       tt=createServo(data.id,vpin,activePosition, inactivePosition, profile, (data.tStatus & STATUS_ACTIVE) ? 1 : 0);
     } else if (data.subAddress==(uint8_t)VPIN_TURNOUT_SUBADDRESS) 
       tt=create(data.id,data.subAddress);  // VPIN-based turnout
@@ -198,7 +198,7 @@ Turnout *Turnout::createDCC(int id, int add, int subAdd){
 // Ideally, the VPIN wouldn't be limited and probably the position wouldn't be so limited, but the 
 // problem is that there is limited space within the structure.
 Turnout *Turnout::createServo(int id, VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t initialState){
-  int pin = vpin - IODevice::firstServoVPin;
+  int pin = vpin - IODevice::firstServoVpin;
   if (pin < 0 || pin >=64) return NULL; // Check valid range of servo pins
   if (activePosition > 511 || inactivePosition > 511 || profile > 4) return NULL;
   // Configure PWM interface device
@@ -256,7 +256,7 @@ void Turnout::print(Turnout *tt) {
     int activePosition = ((tt->data.positionWord & 0x200) >> 1) | tt->data.positionByte;
     int profile = (tt->data.positionByte >> 10) & 0x7;
     int pin = (tt->data.tStatus & STATUS_PWMPIN);
-    int vpin = pin+IODevice::firstServoVPin;
+    int vpin = pin+IODevice::firstServoVpin;
     DIAG(F("<H %d SERVO %d %d %d %d %d>\n"), tt->data.id, vpin, 
         activePosition, inactivePosition, profile, (tt->data.tStatus & STATUS_ACTIVE)!=0);
   } else

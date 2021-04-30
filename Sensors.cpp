@@ -155,8 +155,9 @@ Sensor *Sensor::create(int snum, int pin, int pullUp){
   tt->data.pullUp=(pullUp==0?LOW:HIGH);
   tt->active=false;
   tt->latchdelay=0;
-  // TODO: Pullup enabled by default, and can't currently be turned off.  Doesn't stop a lower value external pull-up being added.
-  //digitalWrite(pin,pullUp);   // don't use Arduino's internal pull-up resistors for external infrared sensors --- each sensor must have its own 1K external pull-up resistor
+  IODevice::configurePullup(pin, pullUp);   
+    // Generally, internal pull-up resistors are not, on their own, sufficient 
+    // for external infrared sensors --- each sensor must have its own 1K external pull-up resistor
 
   return tt;
 

@@ -21,11 +21,6 @@
 #include "DIAG.h"
 #include "I2CManager.h"
 
-// Register definitions for MCP23008
-#define REG_IODIR 0x00
-#define REG_GPPU 0x06
-#define REG_GPIO 0x09
-
 // Define symbol to enable MCP23008 input port value caching (reduce I2C traffic).
 #define MCP23008_OPTIMISE
 
@@ -37,7 +32,7 @@ IODevice *MCP23008::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
   DIAG(F("MCP23008 created Vpins:%d-%d I2C:%x"), vpin, vpin+nPins-1, I2CAddress);
   #endif
   MCP23008 *dev = new MCP23008();
-  dev->_firstID = vpin;
+  dev->_firstVpin = vpin;
   dev->_nPins = min(nPins, 8*8);
   uint8_t nModules = (dev->_nPins + 7) / 8; // Number of modules in use.
   dev->_nModules = nModules;
@@ -80,9 +75,27 @@ void MCP23008::_begin() {
   }
 }
 
+// Device-specific pin configuration
+bool MCP23008::_configurePullup(VPIN vpin, bool pullup) {
+  int pin = vpin - _firstVpin;
+  #ifdef DIAG_IO
+  DIAG(F("MCP23008 _configurePullup Pin:%d Val:%d"), vpin, pullup);
+  #endif
+  int deviceIndex = pin/8;
+  pin %= 8; // Pin within device
+  uint8_t mask = 1 << pin;
+  if (pullup) 
+    _portPullup[deviceIndex] |= mask;
+  else
+    _portPullup[deviceIndex] &= ~mask;
+  I2CManager.write(_I2CAddress+deviceIndex, 2, REG_GPPU, _portPullup[deviceIndex]);  
+  return true;
+}
+
+
 // Device-specific write function.
 void MCP23008::_write(VPIN vpin, int value) {
-  int pin = vpin -_firstID;
+  int pin = vpin -_firstVpin;
   int deviceIndex = pin / 8;
   pin %= 8; // Pin within device
   #ifdef DIAG_IO
@@ -113,7 +126,7 @@ void MCP23008::_write(VPIN vpin, int value) {
 // (c) the port hasn't been written to.
 int MCP23008::_read(VPIN vpin) {
   int result;
-  int pin = vpin-_firstID;
+  int pin = vpin-_firstVpin;
   int deviceIndex = pin / 8;  
   pin %= 8;
   uint8_t mask = 1 << pin;
@@ -121,12 +134,6 @@ int MCP23008::_read(VPIN vpin) {
     // Pin currently in write mode, so set to read mode
     _portDirection[deviceIndex] |= mask;
     writeRegister(_I2CAddress+deviceIndex, REG_IODIR, _portDirection[deviceIndex]);
-    _portCounter[deviceIndex] = 0;
-  }
-  if (!(_portPullup[deviceIndex] & mask)) {
-     // Enable weak pull-up resistor on inputs
-     _portPullup[deviceIndex] |= mask;
-     writeRegister(_I2CAddress+deviceIndex, REG_GPPU, _portPullup[deviceIndex]);
     _portCounter[deviceIndex] = 0;
   }
   if (_portCounter[deviceIndex] == 0) {
@@ -165,8 +172,8 @@ void MCP23008::_loop(unsigned long currentMicros) {
 
 void MCP23008::_display() {
   for (int i=0; i<_nModules; i++) {
-    DIAG(F("MCP23008 VPins:%d-%d I2C:x%x"), (int)_firstID+i*8, 
-      (int)min(_firstID+i*8+7,_firstID+_nPins-1), (int)(_I2CAddress+i));
+    DIAG(F("MCP23008 Vpins:%d-%d I2C:x%x"), (int)_firstVpin+i*8, 
+      (int)min(_firstVpin+i*8+7,_firstVpin+_nPins-1), (int)(_I2CAddress+i));
   }
 }
 
@@ -175,10 +182,13 @@ void MCP23008::writeRegister(uint8_t I2CAddress, uint8_t reg, uint8_t value) {
   I2CManager.write(I2CAddress, 2, reg, value);
 }
 
-// Helper function to read a register
+// Helper function to read a register.  Returns zero if error.
 uint8_t MCP23008::readRegister(uint8_t I2CAddress, uint8_t reg) {
   uint8_t buffer;
-  I2CManager.read(I2CAddress, &buffer, 1, &reg, 1);
-  return buffer;
+  uint8_t nBytes = I2CManager.read(I2CAddress, &buffer, 1, &reg, 1);
+  if (nBytes == 1) 
+    return buffer;
+  else
+    return 0;
 }
 

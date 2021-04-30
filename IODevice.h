@@ -47,6 +47,7 @@ class IODevice;
  * 
  */
 
+#ifdef IO_LATEBINDING
 class IODeviceType {
 public:
   IODeviceType(int deviceType) { _deviceType = deviceType; }
@@ -56,6 +57,7 @@ public:
 private:
   int _deviceType = 0;
 };
+#endif
 
 /*
  * IODevice class
@@ -67,8 +69,11 @@ private:
 
 class IODevice {
 public:
+
+#ifdef IO_LATEBINDING
   // Class factory method for creating arbitrary device types
-  static IODevice *create(int deviceTypeID, VPIN firstID, int paramCount, int params[]);
+  static IODevice *create(int deviceTypeID, VPIN firstVpin, int paramCount, int params[]);
+#endif
 
   // Static functions to find the device and invoke its member functions
 
@@ -77,6 +82,9 @@ public:
 
   // configure is used invoke an IODevice instance's _configure method
   static bool configure(VPIN vpin, int paramCount, int params[]);
+
+  // configurePullup is used invoke a GPIO IODevice instance's _configurePullup method
+  static bool configurePullup(VPIN vpin, bool pullup);
 
   // write invokes the IODevice instance's _write method.
   static void write(VPIN vpin, int value);
@@ -99,11 +107,13 @@ public:
   //  static const VPIN turnoutVpinOffset = 300; 
 
   // VPIN of first PCA9685 servo controller pin.  
-  static const VPIN firstServoVPin = 100;
+  static const VPIN firstServoVpin = 100;
   
 protected:
+#ifdef IO_LATEBINDING
   // Method to register the device handler to the IODevice system (called from device's register() method)
   static void _registerDeviceType(int deviceTypeID, IODevice *createFunction(VPIN));
+#endif
 
   // Method to perform initialisation of the device (optionally implemented within device class)
   virtual void _begin() {}
@@ -113,6 +123,12 @@ protected:
     (void)vpin; (void)paramCount; (void)params; // Suppress compiler warning.
     return false;
   };
+
+  // Device-specific pin configuration for GPIOs (optionally implemented within device class)
+  virtual bool _configurePullup(VPIN vpin, bool pullup) {
+    (void)vpin; (void)pullup; // Suppress compiler warning
+    return false;
+  }; 
 
   // Method to write new state (optionally implemented within device class)
   virtual void _write(VPIN vpin, int value) {
@@ -145,7 +161,7 @@ protected:
   virtual bool _isDeletable();
 
   // Common object fields.
-  VPIN _firstID;
+  VPIN _firstVpin;
   int _nPins;
 
   // Static support function for subclass creation
@@ -154,6 +170,9 @@ protected:
 private:
   // Method to check whether the vpin corresponds to this device
   bool owns(VPIN vpin);
+  // Method to find device handling Vpin
+  static IODevice *findDevice(VPIN vpin);
+
   IODevice *_nextDevice = 0;
   static IODevice *_firstDevice;
 
@@ -204,6 +223,8 @@ private:
   PCF8574();  
   // Device-specific initialisation
   void _begin();
+  // Device-specific pin configuration function.  
+  bool _configure(VPIN vpin, bool pullup);
   // Device-specific write function.
   void _write(VPIN vpin, int value);
   // Device-specific read function.
@@ -242,6 +263,8 @@ private:
   MCP23017();
   // Device-specific initialisation
   void _begin();
+  // Device-specific pin configuration
+  bool _configurePullup(VPIN vpin, bool pullup);
   // Device-specific write function.
   void _write(VPIN vpin, int value);
   // Device-specific read function.
@@ -259,10 +282,8 @@ private:
   uint8_t _nModules;
   static const int _maxModules = 8;
   uint16_t *_currentPortState;  // GPIOA in LSB and GPIOB in MSB
-  uint8_t *_portModeA;
-  uint8_t *_portModeB;
-  uint8_t *_portPullupA;
-  uint8_t *_portPullupB;
+  uint16_t *_portMode;
+  uint16_t *_portPullup;
   uint8_t *_portCounter;
   // Interval between ticks when counters are updated
   static const int _portTickTime = 500;
@@ -271,13 +292,13 @@ private:
   unsigned long _lastLoopEntry = 0;
 
   enum {
-    IODIRA = 0x00,
-    IODIRB = 0x01,
-    IOCON = 0x0A,
-    GPPUA = 0x0C,
-    GPPUB = 0x0D,
-    GPIOA = 0x12,
-    GPIOB = 0x13
+    REG_IODIRA = 0x00,
+    REG_IODIRB = 0x01,
+    REG_IOCON = 0x0A,
+    REG_GPPUA = 0x0C,
+    REG_GPPUB = 0x0D,
+    REG_GPIOA = 0x12,
+    REG_GPIOB = 0x13
   };
 };
 
@@ -296,6 +317,8 @@ private:
   MCP23008();  
   // Device-specific initialisation
   void _begin();
+  // Device-specific pin configuration
+  bool _configurePullup(VPIN vpin, bool pullup);
   // Device-specific write function.
   void _write(VPIN vpin, int value);
   // Device-specific read function.
@@ -323,6 +346,14 @@ private:
   // Number of ticks to elapse before cached port values expire.
   static const int _minTicksBetweenPortReads = 4;
   unsigned long _lastLoopEntry = 0;
+
+  enum {
+    // Register definitions for MCP23008
+    REG_IODIR=0x00,
+    REG_GPPU=0x06,
+    REG_GPIO=0x09
+  };
+
 };
 
 
@@ -333,8 +364,8 @@ private:
  
 class DCCAccessoryDecoder: public IODevice {
 public:
-  static void create(VPIN firstID, int DCCAddress, int DCCSubaddress);
-  static void create(VPIN firstID, int DCCLinearAddress);
+  static void create(VPIN firstVpin, int DCCAddress, int DCCSubaddress);
+  static void create(VPIN firstVpin, int DCCLinearAddress);
 
 private:
   // Constructor
@@ -351,24 +382,26 @@ private:
 /* 
  *  Example of an IODevice subclass for arduino input/output pins.
  */
-
-// TODO: Implement pullup configuration (currently permanently enabled by default).
  
 class ArduinoPins: public IODevice {
 public:
-  static void create(VPIN firstID, int nPins) {
-    addDevice(new ArduinoPins(firstID, nPins));
+  static void create(VPIN firstVpin, int nPins) {
+    addDevice(new ArduinoPins(firstVpin, nPins));
   }
   
   // Constructor
-  ArduinoPins(VPIN firstID, int nPins);
+  ArduinoPins(VPIN firstVpin, int nPins);
 
 private:
+  // Device-specific pin configuration
+  bool _configurePullup(VPIN vpin, bool pullup);
   // Device-specific write function.
   void _write(VPIN vpin, int value);
   // Device-specific read function.
   int _read(VPIN vpin);
   void _display();
+
+  uint8_t *_pinPullups;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -32,7 +32,7 @@ IODevice *PCF8574::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
   DIAG(F("PCF8574 created Vpins:%d-%d I2C:%x"), vpin, vpin+nPins-1, I2CAddress);
   #endif
   PCF8574 *dev = new PCF8574();
-  dev->_firstID = vpin;
+  dev->_firstVpin = vpin;
   dev->_nPins = min(nPins, 8*8);
   uint8_t nModules = (dev->_nPins + 7) / 8; // Number of modules in use.
   dev->_nModules = nModules;
@@ -57,25 +57,33 @@ void PCF8574::create(VPIN vpin, int nPins, uint8_t I2CAddress) {
 // Device-specific initialisation
 void PCF8574::_begin() {
   I2CManager.begin();
-  I2CManager.setClock(100000);  // Only supports slow clock
+  I2CManager.setClock(100000);  // Only supports slow clock by default
   for (int i=0; i<_nModules; i++) {
-    // TODO: Could probe further into the device to 
-    //  distinguish it from an MCP230xx.
     if (I2CManager.exists(_I2CAddress+i))
       DIAG(F("PCF8574 found on I2C:x%x"), _I2CAddress+i);
-    _portInputState[i] = 0;
+    _portInputState[i] = 0x00;
     _portOutputState[i] = 0x00; // Defaults to output zero.
     _portCounter[i] = 0;
   }
 }
 
+// Device-specific pin configuration function.  The PCF8574 will not work in input mode
+// unless a pullup is configured.  So return false (fail) if anything else requested.
+bool PCF8574::_configure(VPIN vpin, bool pullup) {
+  (void)vpin;   // Suppress compiler warning
+  if (pullup) 
+    return true;
+  else
+    return false;
+}
+
 // Device-specific write function.
 void PCF8574::_write(VPIN vpin, int value) {
-  int pin = vpin -_firstID;
+  int pin = vpin -_firstVpin;
   int deviceIndex = pin / 8;
   pin %= 8; // Pin within device
   #ifdef DIAG_IO
-  DIAG(F("PCF8574 Write I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress+deviceIndex, (int)vpin, value);
+  DIAG(F("PCF8574::_write I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress+deviceIndex, (int)vpin, value);
   #endif
   uint8_t mask = 1 << pin;
   if (value) 
@@ -97,7 +105,7 @@ void PCF8574::_write(VPIN vpin, int value) {
 int PCF8574::_read(VPIN vpin) {
   byte inBuffer;
   int result;
-  int pin = vpin-_firstID;
+  int pin = vpin-_firstVpin;
   int deviceIndex = pin / 8;  
   pin %= 8;
   uint8_t mask = 1 << pin;
@@ -111,8 +119,11 @@ int PCF8574::_read(VPIN vpin) {
     _portCounter[deviceIndex] = 0;
   }
   if (bytesToSend || _portCounter[deviceIndex] == 0) {
-    I2CManager.read(_I2CAddress+deviceIndex, &inBuffer, 1, &_portOutputState[deviceIndex], bytesToSend);
-    _portInputState[deviceIndex] = inBuffer;
+    uint8_t nBytes = I2CManager.read(_I2CAddress+deviceIndex, &inBuffer, 1, &_portOutputState[deviceIndex], bytesToSend);
+    if (nBytes == 1)
+      _portInputState[deviceIndex] = inBuffer;
+    else  
+      _portInputState[deviceIndex] = 0;  // Return zero if error.
 #ifdef PCF8574_OPTIMISE
     _portCounter[deviceIndex] = _minTicksBetweenPortReads;
 #endif
@@ -122,7 +133,7 @@ int PCF8574::_read(VPIN vpin) {
   else
     result = 0;
   #ifdef DIAG_IO
-  //DIAG(F("PCF8574 Read I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress+deviceIndex, (int)pin, result);
+  //DIAG(F("PCF8574::_read I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress+deviceIndex, (int)pin, result);
   #endif
   return result;
 }
@@ -146,8 +157,8 @@ void PCF8574::_loop(unsigned long currentMicros) {
 
 void PCF8574::_display() {
   for (int i=0; i<_nModules; i++) {
-    DIAG(F("PCF8574 VPins:%d-%d I2C:x%x"), (int)_firstID+i*8, 
-      (int)min(_firstID+i*8+7,_firstID+_nPins-1), (int)(_I2CAddress+i));
+    DIAG(F("PCF8574 VPins:%d-%d I2C:x%x"), (int)_firstVpin+i*8, 
+      (int)min(_firstVpin+i*8+7,_firstVpin+_nPins-1), (int)(_I2CAddress+i));
   }
 }
 

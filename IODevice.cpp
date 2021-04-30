@@ -31,12 +31,12 @@
 //  its class at coding time.  Late binding, Microsoft call it.
 //  The device class is identifed from the deviceType parameter by looking down 
 //  a list of registered types.
-IODevice *IODevice::create(int deviceType, VPIN firstID, int paramCount, int params[]) {
+IODevice *IODevice::create(int deviceType, VPIN firstVpin, int paramCount, int params[]) {
   for (IODeviceType *dt = _firstDeviceType; dt != 0; dt=dt->_nextDeviceType){
     if (dt->getDeviceType() == deviceType) {
-      IODevice *dev = (dt->createFunction)(firstID);
+      IODevice *dev = (dt->createFunction)(firstVpin);
       if (dev)
-        dev->_configure(firstID, paramCount, params);
+        dev->_configure(firstVpin, paramCount, params);
       return dev;
     }
   }
@@ -64,13 +64,13 @@ void IODevice::begin() {
 #if !defined(ARDUINO_AVR_NANO) && !defined(ARDUINO_AVR_UNO)
   // Predefine two PCA9685 modules 0x40-0x41
   // Allocates 32 pins 100-131
-  PCA9685::create(IODevice::firstServoVPin, 32, 0x40);
+  PCA9685::create(IODevice::firstServoVpin, 32, 0x40);
   // Predefine one PCF8574 module 0x23
   // Allocates 8 pins 132-139
-  PCF8574::create(IODevice::firstServoVPin+32, 8, 0x23);
+  PCF8574::create(IODevice::firstServoVpin+32, 8, 0x23);
   // Predefine two MCP23017 modules 0x20-0x21
   // Allocates 32 pins 164-x195
-  MCP23017::create(IODevice::firstServoVPin+64, 32, 0x20);
+  MCP23017::create(IODevice::firstServoVpin+64, 32, 0x20);
 #endif
 }
 
@@ -81,6 +81,10 @@ void IODevice::begin() {
 // The current value of micros() is passed as a parameter, so the called loop function
 // doesn't need to invoke it.
 void IODevice::loop() {
+#if defined(DIAG_IO)
+  DDRE |= 0x10;  // Mega E4 is pin 2.
+  //PORTE ^= 0x10;
+#endif
   unsigned long currentMicros = micros();
   // Call every device's loop function in turn.
   for (IODevice *dev = _firstDevice; dev != 0; dev = dev->_nextDevice) {
@@ -88,7 +92,7 @@ void IODevice::loop() {
   }
 
   // Report loop time if diags enabled
-#if DIAG_IO
+#if defined(DIAG_IO)
   static unsigned long lastMicros = 0;
   static unsigned long maxElapsed = 0;
   static unsigned long lastOutputTime = 0;
@@ -101,7 +105,7 @@ void IODevice::loop() {
   count++;
   if (currentMicros - lastOutputTime > 5000000UL) {
     if (lastOutputTime > 0) 
-      DIAG(F("Looptime Max=%dus, Ave=%dus"), (int)maxElapsed, (int)((unsigned long)5000000UL/count));
+      LCD(3,F("Loop=%lus,%lus"), (unsigned long)5000000UL/count, maxElapsed);
     maxElapsed = 0;
     count = 0;
     lastOutputTime = currentMicros;
@@ -119,10 +123,7 @@ void IODevice::DumpAll() {
 
 // Determine if the specified vpin is allocated to a device.
 bool IODevice::exists(VPIN vpin) {
-  for (IODevice *dev = _firstDevice; dev != 0; dev = dev->_nextDevice) {
-    if (dev->owns(vpin)) return true;
-  }
-  return false;
+  return findDevice(vpin) != NULL;
 }
 
 // Remove specified device if one exists.  This is necessary if devices are
@@ -153,32 +154,37 @@ void IODevice::remove(VPIN vpin) {
 
 // Display (to diagnostics) details of the device.
 void IODevice::_display() {
-  DIAG(F("Unknown device VPins:%d-%d"), (int)_firstID, (int)_firstID+_nPins-1);
+  DIAG(F("Unknown device Vpins:%d-%d"), (int)_firstVpin, (int)_firstVpin+_nPins-1);
 }
 
 // Find device associated with nominated Vpin and pass configuration values on to it.
 //   Return false if not found.
 bool IODevice::configure(VPIN vpin, int paramCount, int params[]) {
-  for (IODevice *dev = _firstDevice; dev != 0; dev = dev->_nextDevice) {
-    if (dev->owns(vpin)) {
-      // Found appropriate object
-      return dev->_configure(vpin, paramCount, params);
-    }
-  }
+  IODevice *dev = findDevice(vpin);
+  if (dev) return dev->_configure(vpin, paramCount, params);
   return false;
 }
+
+// Find device associaed with nominated Vpin and pass request on to it.
+//  configurePullup is used invoke a GPIO IODevice instance's _configurePullup method.
+//  Return false if not found.
+bool IODevice::configurePullup(VPIN vpin, bool pullup) {
+  IODevice *dev = findDevice(vpin);
+  if (dev) return dev->_configurePullup(vpin, pullup);
+  return false;
+}
+
 
 // Write value to virtual pin(s).  If multiple devices are allocated the same pin
 //  then only the first one found will be used.
 void IODevice::write(VPIN vpin, int value) {
-  for (IODevice *dev = _firstDevice; dev != 0; dev = dev->_nextDevice) {
-    if (dev->owns(vpin)) {
-      dev->_write(vpin, value);
-      return;
-    }
+  IODevice *dev = findDevice(vpin);
+  if (dev) {
+    dev->_write(vpin, value);
+    return;
   }
 #ifdef DIAG_IO
-  DIAG(F("IODevice::write(): VPin ID %d not found!"), (int)vpin);
+  DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
 #endif
 }
 
@@ -193,6 +199,15 @@ void IODevice::addDevice(IODevice *newDevice) {
   newDevice->_begin();
 }
 
+// Private helper function to locate a device by VPIN.  Returns NULL if not found
+IODevice *IODevice::findDevice(VPIN vpin) { 
+  for (IODevice *dev = _firstDevice; dev != 0; dev = dev->_nextDevice) {
+    if (dev->owns(vpin)) 
+      return dev;
+  }
+  return NULL;
+}
+  
 
 //==================================================================================================================
 // Instance members
@@ -200,7 +215,7 @@ void IODevice::addDevice(IODevice *newDevice) {
 
 // Method to check whether the id corresponds to this device
 bool IODevice::owns(VPIN id) {
-  return (id >= _firstID && id < _firstID + _nPins);
+  return (id >= _firstVpin && id < _firstVpin + _nPins);
 }
 
 // Write to devices which are after the current one in the list; this 
@@ -216,7 +231,7 @@ void IODevice::writeDownstream(VPIN vpin, int value) {
     }
   }
 #ifdef DIAG_IO
-  DIAG(F("IODevice::write(): VPin ID %d not found!"), (int)vpin);
+  DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
 #endif  
 } 
 
@@ -227,7 +242,7 @@ bool IODevice::read(VPIN vpin) {
       return dev->_read(vpin);
   }
 #ifdef DIAG_IO
-  DIAG(F("IODevice::read(): VPin %d not found!"), (int)vpin);
+  DIAG(F("IODevice::read(): Vpin %d not found!"), (int)vpin);
 #endif
   return false;
 }
@@ -245,9 +260,29 @@ IODeviceType *IODevice::_firstDeviceType = 0;
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Constructor
-ArduinoPins::ArduinoPins(VPIN firstID, int nPins) {
-  _firstID = firstID;
+ArduinoPins::ArduinoPins(VPIN firstVpin, int nPins) {
+  _firstVpin = firstVpin;
   _nPins = nPins;
+  _pinPullups = (uint8_t *)calloc(1, (_nPins+7)/8);
+  for (int i=0; i<(_nPins+7)/8; i++) _pinPullups[i] = 0;
+}
+
+// Device-specific pin configuration
+bool ArduinoPins::_configurePullup(VPIN id, bool pullup) {
+  int pin = id;
+  #ifdef DIAG_IO
+  DIAG(F("Arduino _configurePullup Pin:%d Val:%d"), pin, pullup);
+  #endif
+  uint8_t mask = 1 << ((pin-_firstVpin) % 8);
+  uint8_t index = (pin-_firstVpin) / 8;
+  if (pullup) {
+    _pinPullups[index] |= mask;
+    pinMode(pin, INPUT_PULLUP);
+  } else {
+    _pinPullups[index] &= ~mask;
+    pinMode(pin, INPUT);
+  }
+  return true;
 }
 
 // Device-specific write function.
@@ -263,7 +298,12 @@ void ArduinoPins::_write(VPIN id, int value) {
 // Device-specific read function.
 int ArduinoPins::_read(VPIN id) {
   int pin = id;
-  pinMode(pin, INPUT_PULLUP);
+  uint8_t mask = 1 << ((pin-_firstVpin) % 8);
+  uint8_t index = (pin-_firstVpin) / 8;
+  if (_pinPullups[index] & mask) 
+    pinMode(pin, INPUT_PULLUP);
+  else
+    pinMode(pin, INPUT);
   int value = digitalRead(pin);
   #ifdef DIAG_IO
   //DIAG(F("Arduino Read Pin:%d Value:%d"), pin, value);
@@ -272,7 +312,7 @@ int ArduinoPins::_read(VPIN id) {
 }
 
 void ArduinoPins::_display() {
-  DIAG(F("Arduino VPins:%d-%d"), (int)_firstID, (int)_firstID+_nPins-1);
+  DIAG(F("Arduino Vpins:%d-%d"), (int)_firstVpin, (int)_firstVpin+_nPins-1);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////

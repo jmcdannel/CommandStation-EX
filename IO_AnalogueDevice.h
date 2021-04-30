@@ -44,9 +44,11 @@ public:
     Bounce = 4    // For semaphores/turnouts with a bit of bounce!!
   };
 
+#ifdef IO_LATEBINDING
   static void registerDeviceType() {
     _registerDeviceType(DeviceType::Analogue, createInstance);
   }
+#endif
   static IODevice *createInstance(VPIN vpin);
   static void create(VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t initialState);  
   Analogue() { }
