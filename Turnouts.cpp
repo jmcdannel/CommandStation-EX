@@ -42,7 +42,7 @@ void Turnout::print(Print *stream){
     int pin = (data.tStatus & STATUS_PWMPIN);
     int vpin = pin+IODevice::firstServoVpin;
     StringFormatter::send(stream, F("<H %d SERVO %d %d %d %d %d>\n"), data.id, vpin, 
-      activePosition, inactivePosition, profile, (data.tStatus & STATUS_ACTIVE)!=0);
+      activePosition, inactivePosition, profile, (int)((data.tStatus & STATUS_ACTIVE)!=0));
   } else if (data.address == LCN_TURNOUT_ADDRESS) {
     // LCN Turnout
     StringFormatter::send(stream, F("<H %d LCN>"), data.id);
@@ -52,7 +52,7 @@ void Turnout::print(Print *stream){
   } else {
     // DCC Turnout
     StringFormatter::send(stream, F("<H %d DCC %d %d %d>\n"), data.id, data.address, 
-        data.subAddress, (data.tStatus & STATUS_ACTIVE)!=0);
+        (int)data.subAddress, (int)((data.tStatus & STATUS_ACTIVE)!=0));
   }
 }
 
@@ -63,7 +63,6 @@ bool Turnout::activate(int n,bool state){
   Turnout * tt=get(n);
   if (tt==NULL) return false;
   tt->activate(state);
-  EEStore::store();
   turnoutlistHash++;
   return true;
 }
@@ -94,7 +93,9 @@ void Turnout::activate(bool state) {
     IODevice::write(pin+IODevice::firstServoVpin, state);
   else
     DCC::setAccessory(data.address, data.subAddress, state);
-  EEStore::store();
+  // Save state if stored in EEPROM
+  if (EEStore::eeStore->data.nTurnouts > 0 && num > 0) 
+    EEPROM.put(num, data);
 }
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -143,6 +144,7 @@ void Turnout::load(){
     else
       tt=createDCC(data.id,data.address,data.subAddress); // DCC/LCN-based turnout
     tt->data.tStatus=data.tStatus;
+    tt->num = EEStore::pointer(); // Save pointer to EEPROM struct
     EEStore::advance(sizeof(tt->data));
 #ifdef EESTOREDEBUG
     print(tt);
@@ -162,6 +164,7 @@ void Turnout::store(){
 #ifdef EESTOREDEBUG
     print(tt);
 #endif
+    tt->num = EEStore::pointer(); // Save pointer to struct
     EEPROM.put(EEStore::pointer(),tt->data);
     EEStore::advance(sizeof(tt->data));
     tt=tt->nextTurnout;
@@ -193,7 +196,8 @@ Turnout *Turnout::createDCC(int id, int add, int subAdd){
 
 // Method for creating a PCA9685 PWM turnout.  Vpins are numbered from IODevice::firstServoVPIN
 // The pin used internally by the turnout is the number within this range.  So if firstServoVpin is 100,
-// then VPIN 100 is pin 0, VPIN 101 is pin 1 etc. up to VPIN 163 is pin 63.  Servos generally operate 
+// then VPIN 100 is pin 0 on the first PCA9685, VPIN 101 is pin 1 etc. up to VPIN 163 is pin 15 on the
+// fourth PCA9685 (if present and configured).  Servos generally operate 
 // over the range of 200-400 so the activePosition and inactivePosition are limited to 0-511 in range.
 // Ideally, the VPIN wouldn't be limited and probably the position wouldn't be so limited, but the 
 // problem is that there is limited space within the structure.

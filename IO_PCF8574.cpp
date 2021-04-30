@@ -60,7 +60,7 @@ void PCF8574::_begin() {
   I2CManager.setClock(100000);  // Only supports slow clock by default
   for (int i=0; i<_nModules; i++) {
     if (I2CManager.exists(_I2CAddress+i))
-      DIAG(F("PCF8574 found on I2C:x%x"), _I2CAddress+i);
+      DIAG(F("PCF8574 configured on I2C:x%x"), (int)_I2CAddress+i);
     _portInputState[i] = 0x00;
     _portOutputState[i] = 0x00; // Defaults to output zero.
     _portCounter[i] = 0;

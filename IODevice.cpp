@@ -81,10 +81,6 @@ void IODevice::begin() {
 // The current value of micros() is passed as a parameter, so the called loop function
 // doesn't need to invoke it.
 void IODevice::loop() {
-#if defined(DIAG_IO)
-  DDRE |= 0x10;  // Mega E4 is pin 2.
-  //PORTE ^= 0x10;
-#endif
   unsigned long currentMicros = micros();
   // Call every device's loop function in turn.
   for (IODevice *dev = _firstDevice; dev != 0; dev = dev->_nextDevice) {
@@ -92,7 +88,7 @@ void IODevice::loop() {
   }
 
   // Report loop time if diags enabled
-#if defined(DIAG_IO)
+//#if defined(DIAG_IO)
   static unsigned long lastMicros = 0;
   static unsigned long maxElapsed = 0;
   static unsigned long lastOutputTime = 0;
@@ -111,7 +107,7 @@ void IODevice::loop() {
     lastOutputTime = currentMicros;
   }
   lastMicros = micros();
-#endif
+//#endif
 }
 
 // Display a list of all the devices on the diagnostic stream.

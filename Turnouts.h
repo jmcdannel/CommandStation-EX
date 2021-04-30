@@ -89,7 +89,7 @@ struct TurnoutData {
 };
 
 class Turnout {
-  public:
+public:
   static Turnout *firstTurnout;
   static int turnoutlistHash;
   TurnoutData data;
@@ -111,6 +111,8 @@ class Turnout {
 #ifdef EESTOREDEBUG
   static void print(Turnout *tt);
 #endif
+private:
+  int num;  // Pointer to start of TurnoutData struct in EEPROM, or zero if not stored.
 }; // Turnout
   
 #endif

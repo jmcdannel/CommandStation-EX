@@ -80,6 +80,8 @@ void PCA9685::_begin() {
   // Initialise I/O module(s) here.
   for (byte module=0; module < _nPins/16; module++) {
     uint8_t address = _I2CAddress + module;
+    if (I2CManager.exists(address))
+      DIAG(F("PCA9685 configured on I2C:x%x"), (int)address);
     writeRegister(address, PCA9685_MODE1, MODE1_SLEEP | MODE1_AI);    
     writeRegister(address, PCA9685_PRESCALE, PRESCALE_50HZ);   // 50Hz clock, 20ms pulse period.
     writeRegister(address, PCA9685_MODE1, MODE1_AI);

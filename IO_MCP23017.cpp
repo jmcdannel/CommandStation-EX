@@ -54,7 +54,7 @@ void MCP23017::_begin() {
   for (int i=0; i<_nModules; i++) {
     uint8_t address = _I2CAddress+i;
     if (I2CManager.exists(address))
-      DIAG(F("MCP23017 found on I2C:x%x"), address);
+      DIAG(F("MCP23017 configured on I2C:x%x"), (int)address);
     _portMode[i] = 0xFFFF; // Default to input mode
     _portPullup[i] = 0x00; // Default to pullup disabled
     _currentPortState[i] = 0x0000;

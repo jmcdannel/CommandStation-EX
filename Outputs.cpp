@@ -95,9 +95,10 @@ void Output::printAll(Print *stream){
 void  Output::activate(int s){
   data.oStatus=(s>0);                                           // if s>0, set status to active, else inactive
   // set state of output pin to HIGH or LOW depending on whether bit zero of iFlag is set to 0 (ACTIVE=HIGH) or 1 (ACTIVE=LOW)
-  IODevice::write(data.pin,data.oStatus ^ bitRead(data.iFlag,0));   
-                                            
-  if(num>0)
+  IODevice::write(data.pin,data.oStatus ^ bitRead(data.iFlag,0));  
+
+  // Update EEPROM if output has been stored.    
+  if(EEStore::eeStore->data.nOutputs > 0 && num > 0)
     EEPROM.put(num,data.oStatus);
 }
 
@@ -136,10 +137,9 @@ void Output::load(){
   for(int i=0;i<EEStore::eeStore->data.nOutputs;i++){
     EEPROM.get(EEStore::pointer(),data);
     tt=create(data.id,data.pin,data.iFlag);
-    // restore status to EEPROM value is bit 1 of iFlag=0, otherwise set to value of bit 2 of iFlag
+    // restore status to EEPROM value if bit 1 of iFlag=0, otherwise set to value of bit 2 of iFlag
     tt->data.oStatus=bitRead(tt->data.iFlag,1)?bitRead(tt->data.iFlag,2):data.oStatus;      
     IODevice::write(tt->data.pin,tt->data.oStatus ^ bitRead(tt->data.iFlag,0));
-    pinMode(tt->data.pin,OUTPUT);
     tt->num=EEStore::pointer();
     EEStore::advance(sizeof(tt->data));
   }

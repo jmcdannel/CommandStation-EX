@@ -62,7 +62,7 @@ void MCP23008::_begin() {
   I2CManager.setClock(1000000);  // Supports fast clock
   for (int i=0; i<_nModules; i++) {
     if (I2CManager.exists(_I2CAddress+i))
-      DIAG(F("MCP23008 found on I2C:x%x"), _I2CAddress+i);
+      DIAG(F("MCP23008 configured on I2C:x%x"), (int)_I2CAddress+i);
     _portDirection[i] = 0xff; // Defaults to Input mode
     _portPullup[i] = 0x00; // Defaults to no pullup
     _portInputState[i] = 0x00; 
