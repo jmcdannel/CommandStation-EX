@@ -155,25 +155,19 @@ void SSD1306AsciiWire::begin(const DevType* dev, uint8_t i2cAddr) {
 
 //------------------------------------------------------------------------------
 
-// Set cursor position (by pixels)
-void SSD1306AsciiWire::setCursor(uint8_t col, uint8_t row) {
-  if (row < m_displayHeight && col < m_displayWidth) {
-    m_row = row;
-    m_col = col + m_colOffset;
-    I2CManager.write(m_i2cAddr, 4,
-      0x00,    // Set to command mode
-      SSD1306_SETLOWCOLUMN | (col & 0XF), 
-      SSD1306_SETHIGHCOLUMN | (col >> 4),
-      SSD1306_SETSTARTPAGE | (m_row/8));
-  }
-}
-
-//------------------------------------------------------------------------------
-
 // Set cursor position (by text line)
 void SSD1306AsciiWire::setRowNative(uint8_t line) {
   // Calculate pixel position from line number
-  setCursor(0, line*8);
+  uint8_t row = line*8;
+  if (row < m_displayHeight) {
+    m_row = row;
+    m_col = m_colOffset;
+    I2CManager.write(m_i2cAddr, 4,
+      0x00,    // Set to command mode
+      SSD1306_SETLOWCOLUMN | (m_col & 0XF), 
+      SSD1306_SETHIGHCOLUMN | (m_col >> 4),
+      SSD1306_SETSTARTPAGE | (m_row/8));
+  }
 }
 //------------------------------------------------------------------------------
 
