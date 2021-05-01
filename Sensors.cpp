@@ -74,11 +74,11 @@ decide to ignore the <q ID> return and only react to <Q ID> triggers.
 
 ///////////////////////////////////////////////////////////////////////////////
 //
-// checks one defined sensors and prints _changed_ sensor state
+// checks one defined sensor and prints _changed_ sensor state
 // to stream unless stream is NULL in which case only internal
 // state is updated. Then advances to next sensor which will
-// be checked att next invocation.  Each cycle of reading all sensors will
-// take place no more frequently than once per millisecond.
+// be checked at next invocation.  Each cycle of reading all sensors will
+// take place no more frequently than the time set by 'cycleInterval' microseconds.
 //
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -86,7 +86,7 @@ void Sensor::checkAll(Print *stream){
 
   if (firstSensor == NULL) return;
   if (readingSensor == NULL) { 
-    unsigned int thisTime = micros(); // Up to 65ms time count
+    unsigned long thisTime = micros();
     if (thisTime - lastReadCycle >= cycleInterval) {
       // Required time elapsed since last read cycle started, so initiate new read cycle
       readingSensor = firstSensor;
@@ -95,23 +95,21 @@ void Sensor::checkAll(Print *stream){
   }
   if (!readingSensor) return;
 
-  bool sensorstate = IODevice::read(readingSensor->data.pin);
+  VPIN pin = readingSensor->data.pin;
+  // Where the sensor is attached to a pin, read pin status and invert.  For sources such as LCN,
+  // which don't have an input pin to read, the source calls setState() to update inputState.
+  if (pin!=VPIN_NONE) readingSensor->inputState = !IODevice::read(pin);
 
-  if (!sensorstate == readingSensor->active) { // active==true means sensorstate=0/false so sensor unchanged
+  if (readingSensor->inputState == readingSensor->active) {
     // no change
-    if (readingSensor->latchdelay != 0) {
-      // enable if you want to debug contact jitter
-      //if (stream != NULL) StringFormatter::send(stream, F("JITTER %d %d\n"), 
-      //                                          readingSensor->latchdelay, readingSensor->data.snum);
-      readingSensor->latchdelay=0; // reset
-    }
+    readingSensor->latchdelay=0; // reset
   } else if (readingSensor->latchdelay < minReadCount-1) { // byte, max 255, good value unknown yet
-    // change but first increase anti-jitter counter
+    // change detected, but first increase anti-jitter counter
     readingSensor->latchdelay++;
   } else {
-    // make the change
-    readingSensor->active = !sensorstate;
-    readingSensor->latchdelay=0; // reset 
+    // change validated, act on it.
+    readingSensor->active = readingSensor->inputState;
+    readingSensor->latchdelay=0; // reset for next time
     if (stream != NULL) StringFormatter::send(stream, F("<%c %d>\n"), readingSensor->active ? 'Q' : 'q', readingSensor->data.snum);
   }
 
@@ -133,8 +131,9 @@ void Sensor::printAll(Print *stream){
 } // Sensor::printAll
 
 ///////////////////////////////////////////////////////////////////////////////
+// Static Function to create/find Sensor object.
 
-Sensor *Sensor::create(int snum, int pin, int pullUp){
+Sensor *Sensor::create(int snum, VPIN pin, int pullUp){
   Sensor *tt;
 
   if(firstSensor==NULL){
@@ -155,12 +154,22 @@ Sensor *Sensor::create(int snum, int pin, int pullUp){
   tt->data.pullUp=(pullUp==0?LOW:HIGH);
   tt->active=false;
   tt->latchdelay=0;
-  IODevice::configurePullup(pin, pullUp);   
+  if (pin != VPIN_NONE) IODevice::configurePullup(pin, pullUp);   
     // Generally, internal pull-up resistors are not, on their own, sufficient 
     // for external infrared sensors --- each sensor must have its own 1K external pull-up resistor
 
   return tt;
 
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Object method to directly change the input state, for sensors such as LCN which are updated
+//  by means other than by polling an input.
+
+void Sensor::setState(int value) {
+  // Trigger sensor change to be reported on next checkAll loop.
+  inputState = value;
+  latchdelay = minReadCount; // Don't wait for anti-jitter.
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -178,13 +187,17 @@ bool Sensor::remove(int n){
   for(tt=firstSensor;tt!=NULL && tt->data.snum!=n;pp=tt,tt=tt->nextSensor);
 
   if (tt==NULL)  return false;
-  
+
+  // Unlink the sensor from the list
   if(tt==firstSensor)
     firstSensor=tt->nextSensor;
   else
     pp->nextSensor=tt->nextSensor;
 
+  // Check if the sensor being deleted is the next one to be read.  If so, 
+  // make the following one the next one to be read.
   if (readingSensor==tt) readingSensor=tt->nextSensor;
+
   free(tt);
 
   return true;
@@ -223,4 +236,4 @@ void Sensor::store(){
 
 Sensor *Sensor::firstSensor=NULL;
 Sensor *Sensor::readingSensor=NULL;
-unsigned int Sensor::lastReadCycle=0;
+unsigned long Sensor::lastReadCycle=0;
