@@ -86,11 +86,16 @@ the state of any outputs being monitored or controlled by a separate interface o
 #include "StringFormatter.h"
 #include "IODevice.h"
 
-// print all output states to stream
+///////////////////////////////////////////////////////////////////////////////
+// Static function to print all output states to stream in the form "<Y id state>"
+
 void Output::printAll(Print *stream){
   for (Output *tt = Output::firstOutput; tt != NULL; tt = tt->nextOutput)
     StringFormatter::send(stream, F("<Y %d %d>\n"), tt->data.id, tt->data.oStatus);
 } // Output::printAll
+
+///////////////////////////////////////////////////////////////////////////////
+// Object method to activate / deactivate the Output state.
 
 void  Output::activate(int s){
   data.oStatus=(s>0);                                           // if s>0, set status to active, else inactive
@@ -103,13 +108,18 @@ void  Output::activate(int s){
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// Static function to locate Output object specified by ID 'n'.
+//   Return NULL if not found.
 
 Output* Output::get(int n){
   Output *tt;
   for(tt=firstOutput;tt!=NULL && tt->data.id!=n;tt=tt->nextOutput);
   return(tt);
 }
+
 ///////////////////////////////////////////////////////////////////////////////
+// Static function to delete Output object specified by ID 'n'.
+//   Return false if not found.
 
 bool Output::remove(int n){
   Output *tt,*pp=NULL;
@@ -129,6 +139,7 @@ bool Output::remove(int n){
   }
 
 ///////////////////////////////////////////////////////////////////////////////
+// Static function to load configuration and state of all Outputs from EEPROM
 
 void Output::load(){
   struct OutputData data;
@@ -140,12 +151,13 @@ void Output::load(){
     // restore status to EEPROM value if bit 1 of iFlag=0, otherwise set to value of bit 2 of iFlag
     tt->data.oStatus=bitRead(tt->data.iFlag,1)?bitRead(tt->data.iFlag,2):data.oStatus;      
     IODevice::write(tt->data.pin,tt->data.oStatus ^ bitRead(tt->data.iFlag,0));
-    tt->num=EEStore::pointer();
+    tt->num=EEStore::pointer() + offsetof(OutputData, oStatus); // Save pointer to status within EEPROM
     EEStore::advance(sizeof(tt->data));
   }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// Static function to store configuration and state of all Outputs to EEPROM
 
 void Output::store(){
   Output *tt;
@@ -162,7 +174,9 @@ void Output::store(){
   }
 
 }
+
 ///////////////////////////////////////////////////////////////////////////////
+// Static function to create an Output object
 
 Output *Output::create(int id, int pin, int iFlag, int v){
   Output *tt;
@@ -179,7 +193,7 @@ Output *Output::create(int id, int pin, int iFlag, int v){
   }
 
   if(tt==NULL) return tt;
-  
+  tt->num = 0; // make sure new object doesn't get written to EEPROM until store() command
   tt->data.id=id;
   tt->data.pin=pin;
   tt->data.iFlag=iFlag;
@@ -192,7 +206,6 @@ Output *Output::create(int id, int pin, int iFlag, int v){
   }
 
   return(tt);
-
 }
 
 ///////////////////////////////////////////////////////////////////////////////

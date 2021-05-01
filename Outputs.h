@@ -41,7 +41,7 @@ public:
   Output *nextOutput;
   static void printAll(Print *);
 private:
-  int num;  // Pointer to start of OutputData struct in EEPROM, or zero if not stored.
+  int num;  // EEPROM address of oStatus in OutputData struct, or zero if not stored.
   
 }; // Output
   
