@@ -59,10 +59,10 @@ void Turnout::print(Print *stream){
       activePosition, inactivePosition, profile, state);
   } else if (data.address == LCN_TURNOUT_ADDRESS) {
     // LCN Turnout
-    StringFormatter::send(stream, F("<H %d LCN %d>"), data.id, state);
-  } else if (data.subAddress == (uint8_t)VPIN_TURNOUT_SUBADDRESS) {
+    StringFormatter::send(stream, F("<H %d LCN %d>\n"), data.id, state);
+  } else if (data.subAddress == VPIN_TURNOUT_SUBADDRESS) {
     // VPIN Digital output
-    StringFormatter::send(stream, F("<H %d VPIN %d %d"), data.id, data.address, state);
+    StringFormatter::send(stream, F("<H %d VPIN %d %d>\n"), data.id, data.address, state);
   } else {
     // DCC Turnout
     StringFormatter::send(stream, F("<H %d DCC %d %d %d>\n"), data.id, data.address, 
@@ -113,10 +113,13 @@ void Turnout::activate(bool state) {
   else
     data.tStatus &= ~STATUS_ACTIVE;
 
-  int pin = (data.tStatus & STATUS_PWMPIN);
-  if (data.tStatus & STATUS_PWM) 
-    IODevice::write(pin+IODevice::firstServoVpin, state);
-  else
+  if (data.tStatus & STATUS_PWM) {
+    int pin = (data.tStatus & STATUS_PWMPIN);
+    IODevice::write(pin+IODevice::firstServoVpin, state);  // Servo turnout
+  } else if (data.subAddress == VPIN_TURNOUT_SUBADDRESS) {
+    int pin = data.address;
+    IODevice::write(pin, state);  // VPIN turnout
+  } else
     DCC::setAccessory(data.address, data.subAddress, state);
   // Save state if stored in EEPROM
   if (EEStore::eeStore->data.nTurnouts > 0 && num > 0) 
@@ -172,7 +175,7 @@ void Turnout::load(){
       int pin = (data.tStatus & STATUS_PWMPIN);
       int vpin = pin+IODevice::firstServoVpin;
       tt=createServo(data.id,vpin,activePosition, inactivePosition, profile, initialState);
-    } else if (data.subAddress==(uint8_t)VPIN_TURNOUT_SUBADDRESS) {
+    } else if (data.subAddress==VPIN_TURNOUT_SUBADDRESS) {
       int vpin = data.address;
       tt=createVpin(data.id, vpin, initialState);  // VPIN-based turnout
     } else
@@ -216,7 +219,7 @@ Turnout *Turnout::createVpin(int id, VPIN vpin, int state){
   Turnout *tt=create(id);
   tt->data.subAddress = VPIN_TURNOUT_SUBADDRESS;
   tt->data.tStatus=0;
-  tt->data.subAddress = vpin;
+  tt->data.address = vpin;
   if (state) tt->data.tStatus |= STATUS_ACTIVE;
   IODevice::write(vpin, state);   // Set initial state of output.
   return(tt);
