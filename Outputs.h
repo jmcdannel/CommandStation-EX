@@ -29,7 +29,7 @@ struct OutputData {
 };
 
 class Output{
-  public:
+public:
   void activate(int s);
   static Output* get(int);
   static bool remove(int);
@@ -40,8 +40,8 @@ class Output{
   struct OutputData data;
   Output *nextOutput;
   static void printAll(Print *);
-  private:
-  int num;  // Chris has no idea what this is all about!
+private:
+  int num;  // EEPROM address of oStatus in OutputData struct, or zero if not stored.
   
 }; // Output
   

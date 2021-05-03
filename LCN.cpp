@@ -58,8 +58,8 @@ void LCN::loop() {
     else if (ch == 'S' || ch == 's') {
       if (Diag::LCN) DIAG(F("LCN IN %d%c"),id,(char)ch);
       Sensor * ss = Sensor::get(id);
-      if (!ss) ss = Sensor::create(id, 255,0); // impossible pin
-      ss->active = ch == 'S';
+      if (!ss) ss = Sensor::create(id, VPIN_NONE, 0); // impossible pin
+      ss->setState(ch == 'S');
       id = 0;
     }
     else  id = 0; // ignore any other garbage from LCN

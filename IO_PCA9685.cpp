@@ -48,7 +48,7 @@ IODevice *PCA9685::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
   DIAG(F("PCA9685 created Vpins:%d-%d"), vpin, vpin+nPins-1);
   #endif
   PCA9685 *dev = new PCA9685();
-  dev->_firstID = vpin;
+  dev->_firstVpin = vpin;
   dev->_nPins = min(nPins, 8*8);
   dev->_nModules = (nPins + 15) / 16;
   dev->_I2CAddress = I2CAddress;
@@ -80,6 +80,8 @@ void PCA9685::_begin() {
   // Initialise I/O module(s) here.
   for (byte module=0; module < _nPins/16; module++) {
     uint8_t address = _I2CAddress + module;
+    if (I2CManager.exists(address))
+      DIAG(F("PCA9685 configured on I2C:x%x"), (int)address);
     writeRegister(address, PCA9685_MODE1, MODE1_SLEEP | MODE1_AI);    
     writeRegister(address, PCA9685_PRESCALE, PRESCALE_50HZ);   // 50Hz clock, 20ms pulse period.
     writeRegister(address, PCA9685_MODE1, MODE1_AI);
@@ -93,11 +95,11 @@ void PCA9685::_begin() {
 // can be anything in the range of 0-4095 to get between 0% and 100% mark to period
 // ratio.
 void PCA9685::_write(VPIN vpin, int value) {
-  int pin = vpin-_firstID;
+  int pin = vpin-_firstVpin;
   uint16_t address = _I2CAddress + pin/16;
   pin %= 16;
   #ifdef DIAG_IO
-  DIAG(F("PCA9685 Write VPin:%d I2C:x%x/%d Value:%d"), (int)vpin, (int)address, pin, value);
+  DIAG(F("PCA9685 Write Vpin:%d I2C:x%x/%d Value:%d"), (int)vpin, (int)address, pin, value);
   #endif
   uint8_t buffer[] = {(uint8_t)(PCA9685_FIRST_SERVO + 4 * pin), 
       0, 0, (uint8_t)(value & 0xff), (uint8_t)(value >> 8)};
@@ -110,8 +112,8 @@ void PCA9685::_write(VPIN vpin, int value) {
 // Display details of this device.
 void PCA9685::_display() {
   for (int i=0; i<_nModules; i++) {
-    DIAG(F("PCA9685 VPins:%d-%d I2C:x%x"), (int)_firstID+i*16, 
-      (int)min(_firstID+i*16+15,_firstID+_nPins-1), (int)(_I2CAddress+i));
+    DIAG(F("PCA9685 Vpins:%d-%d I2C:x%x"), (int)_firstVpin+i*16, 
+      (int)min(_firstVpin+i*16+15,_firstVpin+_nPins-1), (int)(_I2CAddress+i));
   }
 }
 

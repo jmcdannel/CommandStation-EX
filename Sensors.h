@@ -20,6 +20,7 @@
 #define Sensor_h
 
 #include "Arduino.h"
+#include "IODevice.h"
 
 struct SensorData {
   int snum;
@@ -32,16 +33,18 @@ struct Sensor{
   static Sensor *readingSensor;
   SensorData data;
   boolean active;
+  boolean inputState;
   byte latchdelay;
   Sensor *nextSensor;
+  void setState(int state);
   static void load();
   static void store();
-  static Sensor *create(int, int, int);
-  static Sensor* get(int);  
-  static bool remove(int);  
-  static void checkAll(Print *);
-  static void printAll(Print *);
-  static unsigned int lastReadCycle; // low 16 bits of micros, holds up to 64 milliseconds
+  static Sensor *create(int id, VPIN vpin, int pullUp);
+  static Sensor* get(int id);  
+  static bool remove(int id);  
+  static void checkAll(Print *stream);
+  static void printAll(Print *stream);
+  static unsigned long lastReadCycle; // value of micros at start of last read cycle
   static const unsigned int cycleInterval = 5000; // min time between consecutive reads of each sensor in microsecs.
   static const unsigned int minReadCount = 2; // number of consecutive reads before acting on change
                                         // E.g. 2 x 5000 means debounce time of 10ms

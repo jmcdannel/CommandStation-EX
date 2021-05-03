@@ -64,12 +64,6 @@ class SSD1306AsciiWire : public LCDDisplay {
 
   // Initialize the display controller.
   void init(const DevType* dev);
-
-  // // Set the display contrast.
-  // void setContrast(uint8_t value);
-
-  // Set cursor position (in pixels)
-  void setCursor(uint8_t col, uint8_t row);
   
   // Write one character to OLED
   size_t writeNative(uint8_t c);

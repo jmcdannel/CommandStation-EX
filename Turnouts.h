@@ -89,7 +89,7 @@ struct TurnoutData {
 };
 
 class Turnout {
-  public:
+public:
   static Turnout *firstTurnout;
   static int turnoutlistHash;
   TurnoutData data;
@@ -100,7 +100,7 @@ class Turnout {
   static bool isActive(int);
   static void load();
   static void store();
-  static Turnout *create(int id, VPIN vpin);
+  static Turnout *createVpin(int id, VPIN vpin, int initialState=0);
   static Turnout *createDCC(int id , int address , int subAddress);
   static Turnout *createServo(int id , VPIN vpin , uint16_t activeAngle, uint16_t inactiveAngle, uint8_t profile=1, uint8_t initialState=0);
   static Turnout *create(int id, int params, int16_t p[]);
@@ -111,6 +111,8 @@ class Turnout {
 #ifdef EESTOREDEBUG
   static void print(Turnout *tt);
 #endif
+private:
+  int num;  // EEPROM address of tStatus in TurnoutData struct, or zero if not stored.
 }; // Turnout
   
 #endif

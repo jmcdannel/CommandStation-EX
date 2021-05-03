@@ -30,6 +30,11 @@
 #define MAX_MSG_SIZE 16
 #endif
 
+// Set default scroll mode (overridable in config.h)
+#if !defined(SCROLLMODE) 
+#define SCROLLMODE 1
+#endif
+
 // This class is created in LCDisplay_Implementation.h
 
 class LCDDisplay : public DisplayInterface {

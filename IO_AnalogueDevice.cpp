@@ -27,7 +27,7 @@
 IODevice *Analogue::createInstance(VPIN vpin) {
   IODevice::remove(vpin); // Delete any existing device that may conflict
   Analogue *dev = new Analogue();
-  dev->_firstID = vpin;
+  dev->_firstVpin = vpin;
   dev->_nPins = 1;
   dev->_numSteps = dev->_stepNumber = 0;
   dev->_state = -1; // Unknown state
@@ -78,7 +78,7 @@ bool Analogue::_configure(VPIN vpin, int paramCount, int params[]) {
 
 void Analogue::_write(VPIN vpin, int value) {
   #ifdef DIAG_IO
-  DIAG(F("Analogue Write VPin:%d Value:%d"), vpin, value);
+  DIAG(F("Analogue Write Vpin:%d Value:%d"), vpin, value);
   #else
   (void)vpin;  // suppress compiler warning
   #endif
@@ -124,8 +124,8 @@ void Analogue::_write(VPIN vpin, int value) {
 }
 
 void Analogue::_display() {
-  DIAG(F("Analogue VPin:%d Range:%d,%d"), 
-    _firstID, _activePosition, _inactivePosition);
+  DIAG(F("Analogue Vpin:%d Range:%d,%d"), 
+    _firstVpin, _activePosition, _inactivePosition);
 }
 
 // Private function to reposition servo
@@ -157,14 +157,14 @@ void Analogue::updatePosition() {
   }
   // Write to PWM module.  Use writeDownstream.
   if (changed) {
-    writeDownstream(_firstID, _currentPosition);
+    writeDownstream(_firstVpin, _currentPosition);
   } else if (_stepNumber < _numSteps + _catchupSteps) {
     // We've finished animation, wait a little to allow servo to catch up
     _stepNumber++;
   } else if (_stepNumber == _numSteps + _catchupSteps 
             && _currentPosition != 4095 && _currentPosition != 0) {
     // Then switch off PWM to prevent annoying servo buzz
-    writeDownstream(_firstID, 0);
+    writeDownstream(_firstVpin, 0);
     _stepNumber++;
   }
 }
