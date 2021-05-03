@@ -216,6 +216,7 @@ void Turnout::store(){
 // e.g. in mySetup.h during startup of the CS.
 
 Turnout *Turnout::createVpin(int id, VPIN vpin, int state){
+  if (vpin > VPIN_MAX) return NULL;
   Turnout *tt=create(id);
   tt->data.subAddress = VPIN_TURNOUT_SUBADDRESS;
   tt->data.tStatus=0;

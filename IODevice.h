@@ -28,7 +28,7 @@
 #include "I2CManager.h"
 
 typedef uint16_t VPIN;
-#define VPIN_MAX 65534
+#define VPIN_MAX 32767  // Above this number, printing gives negative values.  This should be high enough
 #define VPIN_NONE 65535
 
 
