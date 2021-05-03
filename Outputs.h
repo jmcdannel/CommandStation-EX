@@ -20,6 +20,7 @@
 #define Outputs_h
 
 #include <Arduino.h>
+#include "IODevice.h"
 
 struct OutputData {
   uint8_t oStatus;
@@ -35,7 +36,7 @@ public:
   static bool remove(int);
   static void load();
   static void store();
-  static Output *create(int, int, int, int=0);
+  static Output *create(int, VPIN, int, int=0);
   static Output *firstOutput;
   struct OutputData data;
   Output *nextOutput;

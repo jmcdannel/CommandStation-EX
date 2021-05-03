@@ -178,9 +178,11 @@ void Output::store(){
 ///////////////////////////////////////////////////////////////////////////////
 // Static function to create an Output object
 
-Output *Output::create(int id, int pin, int iFlag, int v){
+Output *Output::create(int id, VPIN pin, int iFlag, int v){
   Output *tt;
 
+  if (pin > 255) return NULL;
+  
   if(firstOutput==NULL){
     firstOutput=(Output *)calloc(1,sizeof(Output));
     tt=firstOutput;

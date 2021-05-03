@@ -136,6 +136,8 @@ void Sensor::printAll(Print *stream){
 Sensor *Sensor::create(int snum, VPIN pin, int pullUp){
   Sensor *tt;
 
+  if (pin > 255) return NULL;
+
   if(firstSensor==NULL){
     firstSensor=(Sensor *)calloc(1,sizeof(Sensor));
     tt=firstSensor;
