@@ -231,7 +231,9 @@ int RMFT2::locateRouteStart(short _route) {
 
 void RMFT2::driveLoco(byte speed) {
      if (loco<0) return;  // Caution, allows broadcast! 
+     if (diag) DIAG(F("RMFT drive %d %d %d"),loco,speed,forward^invert);
      DCC::setThrottle(loco,speed, forward^invert);
+     speedo=speed;
      // TODO... if broadcast speed 0 then pause all other tasks. 
 }
 
@@ -300,12 +302,12 @@ void RMFT2::loop2() {
     
     case OPCODE_REV:
       forward = false;
-      driveLoco(speedo);
+      driveLoco(operand);
       break;
     
     case OPCODE_FWD:
       forward = true;
-      driveLoco(speedo);
+      driveLoco(operand);
       break;
       
     case OPCODE_SPEED:

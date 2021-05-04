@@ -88,7 +88,7 @@ void IODevice::loop() {
   }
 
   // Report loop time if diags enabled
-//#if defined(DIAG_IO)
+#if defined(DIAG_IO)
   static unsigned long lastMicros = 0;
   static unsigned long maxElapsed = 0;
   static unsigned long lastOutputTime = 0;
@@ -107,7 +107,7 @@ void IODevice::loop() {
     lastOutputTime = currentMicros;
   }
   lastMicros = micros();
-//#endif
+#endif
 }
 
 // Display a list of all the devices on the diagnostic stream.
@@ -312,4 +312,3 @@ void ArduinoPins::_display() {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
-
