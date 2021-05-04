@@ -193,7 +193,7 @@ private:
     uint8_t   tries;
     unsigned long startTime;
 
-    unsigned long timeout = 25000; // Transaction timeout in microseconds.  0=disabled.
+    unsigned long timeout = 0; // Transaction timeout in microseconds.  0=disabled.
     
     void                    startTransaction();
     
