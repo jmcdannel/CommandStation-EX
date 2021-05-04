@@ -1,3 +1,25 @@
+/*
+ *  © 2021, Neil McKechnie. All rights reserved.
+ *
+ *  This file is part of CommandStation-EX
+ *
+ *  This is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  It is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#ifndef I2CMANAGER_WIRE_H
+#define I2CMANAGER_WIRE_H
+
 #include <Arduino.h>
 #include <Wire.h>
 #include "I2CManager.h"
@@ -14,11 +36,10 @@ void I2CManagerClass::_setClock(unsigned long i2cClockSpeed) {
  *  Initiate a write to an I2C device (blocking operation on Wire)
  ***************************************************************************/
 uint8_t I2CManagerClass::write(uint8_t address, const uint8_t buffer[], uint8_t size, I2CRB *rb) {
-  uint8_t status = I2C_STATUS_OK;
   Wire.beginTransmission(address);
   if (size > 0) Wire.write(buffer, size);
-  status = Wire.endTransmission();
-  return finishRB(rb, status);
+  rb->status = Wire.endTransmission();
+  return I2C_STATUS_OK;
 }
 
 /***************************************************************************
@@ -29,8 +50,7 @@ uint8_t I2CManagerClass::write_P(uint8_t address, const uint8_t buffer[], uint8_
   const uint8_t *p1 = buffer;
   for (uint8_t i=0; i<size; i++)
     ramBuffer[i] = GETFLASH(p1++);
-  uint8_t status = write(address, ramBuffer, size, rb);
-  return finishRB(rb, status); 
+  return write(address, ramBuffer, size, rb);
 }
 
 /***************************************************************************
@@ -51,10 +71,11 @@ uint8_t I2CManagerClass::read(uint8_t address, uint8_t readBuffer[], uint8_t rea
     Wire.requestFrom(address, (size_t)readSize);
     while (Wire.available() && nBytes < readSize) 
       readBuffer[nBytes++] = Wire.read();
-    if (nBytes < readSize) rb->status = I2C_STATUS_TRUNCATED;
+    if (nBytes < readSize) status = I2C_STATUS_TRUNCATED;
   }
   rb->nBytes = nBytes;
-  return finishRB(rb, status);
+  rb->status = status;
+  return I2C_STATUS_OK;
 }
 
 /***************************************************************************
@@ -67,21 +88,23 @@ void I2CManagerClass::queueRequest(I2CRB *req) {
   uint8_t status;
   switch (req->operation) {
     case OPERATION_READ:
-      status = read(req->i2cAddress, req->readBuffer, req->readLen);
+      status = read(req->i2cAddress, req->readBuffer, req->readLen, NULL, 0, req);
       break;
     case OPERATION_SEND:
-      status = write(req->i2cAddress, req->writeBuffer, req->writeLen);
+      status = write(req->i2cAddress, req->writeBuffer, req->writeLen, req);
       break;
     case OPERATION_SEND_P:
-      status = write_P(req->i2cAddress, req->writeBuffer, req->writeLen);
+      status = write_P(req->i2cAddress, req->writeBuffer, req->writeLen, req);
       break;
     case OPERATION_REQUEST:
-      status = read(req->i2cAddress, req->readBuffer, req->readLen, req->writeBuffer, req->writeLen);
+      status = read(req->i2cAddress, req->readBuffer, req->readLen, req->writeBuffer, req->writeLen, req);
       break;
   }
   req->status = status;
 }
 
 // Loop function
-void I2CManagerClass::loop() {}
+void I2CManagerClass::checkForTimeout() {}
 
+
+#endif
