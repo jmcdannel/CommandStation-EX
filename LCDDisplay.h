@@ -63,6 +63,7 @@ protected:
   virtual void clearNative() = 0;
   virtual void setRowNative(byte line) = 0;
   virtual size_t writeNative(uint8_t b) = 0;
+  virtual bool isBusy() { return false; }
 
   unsigned long lastScrollTime = 0;
   int8_t hotRow = 0;

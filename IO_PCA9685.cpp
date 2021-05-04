@@ -72,6 +72,8 @@ PCA9685::PCA9685() {}
 
 // Device-specific initialisation
 void PCA9685::_begin() {
+  // Initialise structure used for setting pulse rate
+  requestBlock.setWriteParams(0, outputBuffer, sizeof(outputBuffer));
   I2CManager.begin();
   I2CManager.setClock(1000000); // Nominally able to run up to 1MHz on I2C
           // In reality, other devices including the Arduino will limit 
@@ -101,12 +103,16 @@ void PCA9685::_write(VPIN vpin, int value) {
   #ifdef DIAG_IO
   DIAG(F("PCA9685 Write Vpin:%d I2C:x%x/%d Value:%d"), (int)vpin, (int)address, pin, value);
   #endif
-  uint8_t buffer[] = {(uint8_t)(PCA9685_FIRST_SERVO + 4 * pin), 
-      0, 0, (uint8_t)(value & 0xff), (uint8_t)(value >> 8)};
-  if (value == 4095) buffer[2] = 0x10;   // Full on
-  uint8_t error = I2CManager.write(address, buffer, sizeof(buffer));
-  //if (error) DIAG(F("Error I2C:%x, errCode=%d"), address, error);
-  (void)error;
+  // Wait for previous request to complete
+  requestBlock.wait();
+  // Set up new request.
+  requestBlock.i2cAddress = address;
+  outputBuffer[0] = PCA9685_FIRST_SERVO + 4 * pin;
+  outputBuffer[1] = 0;
+  outputBuffer[2] = (value == 4095 ? 0x10 : 0);  // 4095=full on
+  outputBuffer[3] = value & 0xff;
+  outputBuffer[4] = value >> 8;
+  I2CManager.queueRequest(&requestBlock);
 }
 
 // Display details of this device.

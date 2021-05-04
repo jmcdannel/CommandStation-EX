@@ -34,11 +34,10 @@ IODevice *MCP23017::createInstance(VPIN firstVpin, int nPins, uint8_t I2CAddress
   dev->_nModules  = nModules;
   dev->_I2CAddress = I2CAddress;
   // Allocate memory for module state
-  uint8_t *blockStart = (uint8_t *)calloc(7, nModules);
+  uint8_t *blockStart = (uint8_t *)calloc(6, nModules);
   dev->_currentPortState = (uint16_t *)blockStart;  // two bytes per module
   dev->_portMode = (uint16_t *)(blockStart + 2*nModules); // two bytes per module
   dev->_portPullup = (uint16_t *)(blockStart + 4*nModules); // two bytes per module
-  dev->_portCounter = (uint8_t *)(blockStart + 6*nModules); // one byte per module
   addDevice(dev);
   return dev;
 }
@@ -49,6 +48,10 @@ void MCP23017::create(VPIN vpin, int nPins, uint8_t I2CAddress) {
   
 // Device-specific initialisation
 void MCP23017::_begin() { 
+  // Initialise structure for reading GPIO registers
+  outputBuffer[0] = REG_GPIOA;
+  requestBlock.setRequestParams(0, inputBuffer, sizeof(inputBuffer), outputBuffer, sizeof(outputBuffer));
+
   I2CManager.begin();
   I2CManager.setClock(1000000);
   for (int i=0; i<_nModules; i++) {
@@ -59,10 +62,12 @@ void MCP23017::_begin() {
     _portPullup[i] = 0x00; // Default to pullup disabled
     _currentPortState[i] = 0x0000;
     // Initialise device registers (in case it's warm-starting)
-    writeRegister(address, REG_IOCON, 0x00);
+    // IOCON is set MIRROR=1, ODR=1 (open drain shared interrupt pin)
+    writeRegister(address, REG_IOCON, 0x44);
     writeRegister2(address, REG_GPIOA, _currentPortState[i] & 0xff, _currentPortState[i]>>8);
     writeRegister2(address, REG_IODIRA, _portMode[i] & 0xff, _portMode[i]>>8);
     writeRegister2(address, REG_GPPUA, _portPullup[i] & 0xff, _portPullup[i]>>8);
+    writeRegister2(address, REG_GPINTENA, 0xff, 0xff);  // Enable interrupt mode
   }
 }
 
@@ -84,9 +89,6 @@ bool MCP23017::_configurePullup(VPIN vpin, bool pullup) {
     I2CManager.write(_I2CAddress+deviceIndex, 2, REG_GPPUA, _portPullup[deviceIndex] & 0xff);  
   else
     I2CManager.write(_I2CAddress+deviceIndex, 2, REG_GPPUB, _portPullup[deviceIndex] >> 8);  
-  // Assume that writing to the port invalidates any cached read, so set the port counter to 0
-  //  to force the port to be refreshed next time a read is issued.
-  _portCounter[deviceIndex] = 0;
   return true;
 }
   
@@ -120,16 +122,10 @@ void MCP23017::_write(VPIN vpin, int value) {
     else
       writeRegister(address, REG_IODIRB, _portMode[deviceIndex] >> 8);
   }
-  // Assume that writing to the port invalidates any cached read, so set the port counter to 0
-  //  to force the port to be refreshed next time a read is issued.
-  _portCounter[deviceIndex] = 0;
 }
 
-// Device-specific read function.
-// Reduce number of port reads by caching the port value, so that a call from _read
-// can use the cached value if (a) it's not too old and (b) the port mode 
-// hasn't been changed.  When writing, only write to ports that have to change;
-// but read both GPIOA/B at the same time to optimise reads.
+// Device-specific read function.  If pin previously in write mode, then set read mode and read
+//  the port value synchronously.  Subsequent the port reads are done from the _loop function.
 int MCP23017::_read(VPIN vpin) {
   int result;
   int pin = vpin-_firstVpin;
@@ -144,15 +140,8 @@ int MCP23017::_read(VPIN vpin) {
       writeRegister(address, REG_IODIRA, _portMode[deviceIndex] & 0xff);
     else
       writeRegister(address, REG_IODIRB, _portMode[deviceIndex] >> 8);
-    _portCounter[deviceIndex] = 0;
-  }
-  // Only read input port if cached value not available
-  if (_portCounter[deviceIndex] == 0) {
-    // Read both GPIO ports
+    // Then read current port state (synchronous call)
     _currentPortState[deviceIndex] = readRegister2(address, REG_GPIOA);
-  #ifdef MCP23017_OPTIMISE
-    _portCounter[deviceIndex] = _minTicksBetweenPortReads;
-  #endif
   }
   if (_currentPortState[deviceIndex] & mask) 
     result = 1;
@@ -164,21 +153,31 @@ int MCP23017::_read(VPIN vpin) {
   return result;
 }
 
-// Loop function to maintain timers associated with port read optimisation.  Decrement port counters
-// periodically.  When the portCounter reaches zero, the port value is considered to be out-of-date
-// and will need re-reading.
+// Loop function to read and refresh port states
 void MCP23017::_loop(unsigned long currentMicros) {
-  (void)currentMicros;  // suppress compiler not-used warning.
-#ifdef MCP23017_OPTIMISE
-  // Process every tick time
-  if (currentMicros - _lastLoopEntry > _portTickTime) {
-    for (int deviceIndex=0; deviceIndex < _nModules; deviceIndex++) {
-      if (_portCounter[deviceIndex] > 0)
-        _portCounter[deviceIndex]--;
+  if (requestBlock.isBusy()) return;  // Do nothing if a port read is in progress
+  if (currentPollDevice >= 0) {
+    // Scan in progress and last request completed, so retrieve port status from buffer
+    if (requestBlock.status == I2C_STATUS_OK) 
+      _currentPortState[currentPollDevice] = ((uint16_t)inputBuffer[1] << 8) | inputBuffer[0];
+    else
+      _currentPortState[currentPollDevice] = 0xffff;
+    if (++currentPollDevice >= _nModules)
+      currentPollDevice = -1;  // Scan completed
+  } else if (currentMicros - _lastLoopEntry > _portTickTime) {
+    if (_gpioInterruptPin < 0 || digitalRead(_gpioInterruptPin) == 0) {
+      // A cyclic scan is due, and either a GPIO device has pulled down its interrupt pin to
+      //  signal something has changed or GPIO device interrupts are not configured
+      currentPollDevice = 0;  // Starting new scan.
     }
     _lastLoopEntry = currentMicros;
   }
-#endif
+
+  if (currentPollDevice >= 0) {
+    // Initiate read of next module
+    requestBlock.i2cAddress = _I2CAddress+currentPollDevice;
+    I2CManager.queueRequest(&requestBlock);
+  }
 }
 
 // Helper function to write a register
@@ -191,14 +190,14 @@ void MCP23017::writeRegister2(uint8_t address, uint8_t reg, uint8_t valueA, uint
   I2CManager.write(address, 3, reg, valueA, valueB);
 }
 
-// Helper function to read a register pair (e.g. GPIOA/B, IODIRA/B). Returns zero if error.
+// Helper function to read a register pair (e.g. GPIOA/B, IODIRA/B). Returns all ones if error.
 uint16_t MCP23017::readRegister2(uint8_t address, uint8_t reg) {
   uint8_t buffer[2];
-  uint8_t nBytes = I2CManager.read(address, buffer, 2, &reg, 1);
-  if (nBytes == 2) 
+  uint8_t status = I2CManager.read(address, buffer, 2, &reg, 1);
+  if (status == I2C_STATUS_OK) 
     return ((uint16_t)buffer[1] << 8) | buffer[0];
   else  
-    return 0;
+    return 0xffff;
 }
 
 // Display details of this device.

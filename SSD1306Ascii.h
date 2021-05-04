@@ -48,7 +48,6 @@ struct DevType {
 // Constructor
 class SSD1306AsciiWire : public LCDDisplay {
  public:
-  //using Print::write;
 
   // Constructor
   SSD1306AsciiWire(int width, int height);
@@ -73,6 +72,8 @@ class SSD1306AsciiWire : public LCDDisplay {
   static const DevType FLASH Adafruit128x64;
   static const DevType FLASH SH1106_128x64;
 
+  bool isBusy() { return requestBlock.isBusy(); }
+
  private:
   // Cursor column.
   uint8_t m_col;
@@ -88,13 +89,16 @@ class SSD1306AsciiWire : public LCDDisplay {
   const uint8_t* const m_font = System5x7;
 
   // Only fixed size 5x7 fonts in a 6x8 cell are supported.
-  const uint8_t fontWidth = 5;
-  const uint8_t fontHeight = 7;
-  const uint8_t letterSpacing = 1;
-  const uint8_t m_fontFirstChar = 0x20;
-  const uint8_t m_fontCharCount = 0x61;
+  static const uint8_t fontWidth = 5;
+  static const uint8_t fontHeight = 7;
+  static const uint8_t letterSpacing = 1;
+  static const uint8_t m_fontFirstChar = 0x20;
+  static const uint8_t m_fontCharCount = 0x61;
 
   uint8_t m_i2cAddr;
+
+  I2CRB requestBlock;
+  uint8_t outputBuffer[fontWidth+letterSpacing+1];
 
   static const uint8_t blankPixels[];
 

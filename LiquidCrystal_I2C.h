@@ -23,6 +23,7 @@
 
 #include <Arduino.h>
 #include "LCDDisplay.h"
+#include "I2CManager.h"
 
 // commands
 #define LCD_CLEARDISPLAY 0x01
@@ -86,6 +87,10 @@ private:
   uint8_t _displaycontrol;
   uint8_t _displaymode;
   uint8_t _backlightval;
+
+  I2CRB requestBlock;
+  uint8_t outputBuffer[4];
+  bool isBusy() { return requestBlock.isBusy(); }
 };
 
 #endif

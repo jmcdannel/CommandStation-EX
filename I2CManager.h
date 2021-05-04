@@ -23,7 +23,8 @@
 #include "FSH.h"
 
 /* 
- * Helper class to manage access to the I2C 'Wire' subsystem.
+ * Manager for I2C communications.  For portability, it allows use 
+ * of the Wire class, but also has a native implementation for AVR.
  * 
  * Helps to avoid calling Wire.begin() multiple times (which is not)
  * entirely benign as it reinitialises).
@@ -35,11 +36,62 @@
  * device on a particular I2C address.
  */
 
+enum {
+  I2C_STATUS_OK=0,
+  I2C_STATUS_TRUNCATED=1,
+  I2C_STATUS_DEVICE_NOT_PRESENT=2,
+  I2C_STATUS_TRANSMIT_ERROR=3,
+  I2C_STATUS_NEGATIVE_ACKNOWLEDGE=4,
+  I2C_STATUS_TIMEOUT=5,
+  I2C_STATUS_PENDING=253,
+};
+
+typedef enum : uint8_t
+{
+  OPERATION_READ = 1,
+  OPERATION_REQUEST = 2,
+  OPERATION_SEND = 3,
+  OPERATION_SEND_P = 4,
+  OPERATION_REQUEST_READ = 5, // Used internally as second phase of REQUEST
+} OperationEnum;
+
+
+#ifndef I2C_FREQ
+#define I2C_FREQ    400000
+#endif
+
+// Define the following preprocessor symbol to use the standard Arduino Wire library.
+#ifndef ARDUINO_ARCH_AVR
+#define USE_WIRE
+#endif
+//#define USE_WIRE
+
+// Struct defining a request context for an I2C operation.
+struct I2CRB {
+  uint8_t status; // Completion status
+  uint8_t nBytes; // Number of bytes read
+
+  uint8_t wait();
+  inline bool isBusy() { return status==I2C_STATUS_PENDING; };
+  inline void init() { status = I2C_STATUS_OK; };
+  void setReadParams(uint8_t i2cAddress, uint8_t *readBuffer, uint8_t readLen);
+  void setRequestParams(uint8_t i2cAddress, uint8_t *readBuffer, uint8_t readLen, const uint8_t *writeBuffer, uint8_t writeLen);
+  void setWriteParams(uint8_t i2cAddress, const uint8_t *writeBuffer, uint8_t writeLen);
+
+  uint8_t writeLen;
+  uint8_t readLen;
+  uint8_t operation;
+  uint8_t i2cAddress;
+  uint8_t *readBuffer;
+  const uint8_t *writeBuffer;
+#ifndef USE_WIRE
+  I2CRB *nextRequest;
+#endif
+};
+
+// I2C Manager
 class I2CManagerClass {
-
 public:
-
-  I2CManagerClass() {}
 
   // If not already initialised, initialise I2C (wire).
   void begin(void);
@@ -50,29 +102,77 @@ public:
   // Check if specified I2C address is responding.
   uint8_t checkAddress(uint8_t address);
   inline bool exists(uint8_t address) {
-    return checkAddress(address)==0;
+    return checkAddress(address)==I2C_STATUS_OK;
   }
   // Write a complete transmission to I2C from an array in RAM
   uint8_t write(uint8_t address, const uint8_t buffer[], uint8_t size);
+  uint8_t write(uint8_t address, const uint8_t buffer[], uint8_t size, I2CRB *rb);
   // Write a complete transmission to I2C from an array in Flash
   uint8_t write_P(uint8_t address, const uint8_t buffer[], uint8_t size);
+  uint8_t write_P(uint8_t address, const uint8_t buffer[], uint8_t size, I2CRB *rb);
   // Write a transmission to I2C from a list of bytes.
-  uint8_t write(uint8_t address, int nBytes, ...);
+  uint8_t write(uint8_t address, uint8_t nBytes, ...);
   // Write a command from an array in RAM and read response
   uint8_t read(uint8_t address, uint8_t readBuffer[], uint8_t readSize, 
-    uint8_t writeBuffer[], uint8_t writeSize);
+    const uint8_t writeBuffer[]=NULL, uint8_t writeSize=0);
+  uint8_t read(uint8_t address, uint8_t readBuffer[], uint8_t readSize, 
+    const uint8_t writeBuffer[], uint8_t writeSize, I2CRB *rb);
   // Write a command from an arbitrary list of bytes and read response
   uint8_t read(uint8_t address, uint8_t readBuffer[], uint8_t readSize, 
     uint8_t writeSize, ...);
-  // Write a null command and read the response.
-  inline uint8_t read(uint8_t address, uint8_t readBuffer[], uint8_t readSize) {
-    return read(address, readBuffer, readSize, NULL, 0);
-  }
+  void queueRequest(I2CRB *req);
+
+
+  // Loop function for handling timeouts etc.
+  void loop();
 
 private:
   bool _beginCompleted = false;
   bool _clockSpeedFixed = false;
   uint32_t _clockSpeed = 400000L;  // 400kHz max on Arduino.
+  int gpioExtenderInterruptPin = -1; // Arduino pin number for chained interrupts
+
+  // Finish off request block by waiting for completion and posting status.
+  uint8_t finishRB(I2CRB *rb, uint8_t status);
+
+  void _setClock(unsigned long i2cClockSpeed);
+  void _initialise();
+
+#ifndef USE_WIRE
+    // I2CRB structs are queued on the following two links.
+    // If there are no requests, both are NULL.
+    // If there is only one request, then queueHead and queueTail both point to it.
+    // Otherwise, queueHead is the pointer to the first request in the queue and
+    // queueTail is the pointer to the last request in the queue.
+    // Within the queue, each request's nextRequest field points to the 
+    // next request, or NULL.
+    I2CRB *queueHead;
+    I2CRB *queueTail;
+
+    uint8_t   status;
+    uint8_t   txCount;
+    uint8_t   rxCount;
+    uint8_t   tries;
+    uint8_t   retryCount;
+    unsigned long startTime;
+    unsigned long timeout = 0; // Transaction timeout in microseconds.  0=disabled.
+    
+    void                    startTransaction();
+    
+    void                    I2C_init();
+    void                    I2C_handle(I2CRB *);
+    void                    I2C_startTransaction(I2CRB *);
+    bool                    I2C_isStopped(I2CRB *);
+    void                    I2C_close(I2CRB *);
+    
+  public:
+    void setRetryCount(uint8_t count) {retryCount = count;};
+    void setTimeout(uint16_t value) { timeout = value;};
+
+    void handleInterrupt();
+#endif
+
+
 };
 
 extern I2CManagerClass I2CManager;

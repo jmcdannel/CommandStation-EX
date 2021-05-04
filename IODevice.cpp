@@ -17,6 +17,12 @@
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+// TODO: Enable optional use of interrupt pin on MCP23008/23017 modules, 
+// chained from one module to another, into an Arduino digital input.
+// When the Arduino digital input is pulled DOWN, it indicates that the 
+// modules need to be scanned.  Once the interrupting module(s) has been
+// scanned, then the digital input will deactivate (pulled UP).
+
 #include <Arduino.h>
 #include "IODevice.h"
 #include "DIAG.h" 
@@ -25,33 +31,6 @@
 //==================================================================================================================
 // Static methods
 //------------------------------------------------------------------------------------------------------------------
-
-#ifdef IO_LATEBINDING
-// General static method for creating an arbitrary device without having to know
-//  its class at coding time.  Late binding, Microsoft call it.
-//  The device class is identifed from the deviceType parameter by looking down 
-//  a list of registered types.
-IODevice *IODevice::create(int deviceType, VPIN firstVpin, int paramCount, int params[]) {
-  for (IODeviceType *dt = _firstDeviceType; dt != 0; dt=dt->_nextDeviceType){
-    if (dt->getDeviceType() == deviceType) {
-      IODevice *dev = (dt->createFunction)(firstVpin);
-      if (dev)
-        dev->_configure(firstVpin, paramCount, params);
-      return dev;
-    }
-  }
-  return NULL;
-}
-
-void IODevice::_registerDeviceType(int deviceTypeID, IODevice *createFunction(VPIN)) {
-  IODeviceType *dt = new IODeviceType(deviceTypeID);
-  // Link new DeviceType into chain
-  dt->_nextDeviceType = _firstDeviceType;
-  dt->createFunction = createFunction;
-  _firstDeviceType = dt;
-}
-#endif
-
 
 // Static functions
 
@@ -68,9 +47,9 @@ void IODevice::begin() {
   // Predefine one PCF8574 module 0x23
   // Allocates 8 pins 132-139
   PCF8574::create(IODevice::firstServoVpin+32, 8, 0x23);
-  // Predefine two MCP23017 modules 0x20-0x21
-  // Allocates 32 pins 164-x195
-  MCP23017::create(IODevice::firstServoVpin+64, 32, 0x20);
+  // Predefine one MCP23017 module 0x20
+  // Allocates 16 pins 164-x179
+  MCP23017::create(IODevice::firstServoVpin+64, 16, 0x20);
 #endif
 }
 
@@ -249,9 +228,6 @@ bool IODevice::_isDeletable() {
 
 // Start of chain of devices.
 IODevice *IODevice::_firstDevice = 0;
-
-// Start of chain of device types.
-IODeviceType *IODevice::_firstDeviceType = 0;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 

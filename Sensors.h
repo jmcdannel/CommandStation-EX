@@ -46,6 +46,7 @@ struct Sensor{
   static void printAll(Print *stream);
   static unsigned long lastReadCycle; // value of micros at start of last read cycle
   static const unsigned int cycleInterval = 5000; // min time between consecutive reads of each sensor in microsecs.
+                                                  // should not be less than device scan cycle time.
   static const unsigned int minReadCount = 2; // number of consecutive reads before acting on change
                                         // E.g. 2 x 5000 means debounce time of 10ms
 }; // Sensor

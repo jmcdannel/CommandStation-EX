@@ -99,6 +99,9 @@ SSD1306AsciiWire::SSD1306AsciiWire(int width, int height) {
   lcdRows = m_displayHeight / 8;
   lcdCols = m_displayWidth / 6;
 
+  // Initialise request block for I2C
+  requestBlock.init();
+
   I2CManager.begin();
   I2CManager.setClock(400000L);  // Set max supported I2C speed
   for (byte address = 0x3c; address <= 0x3d; address++) {
@@ -162,11 +165,15 @@ void SSD1306AsciiWire::setRowNative(uint8_t line) {
   if (row < m_displayHeight) {
     m_row = row;
     m_col = m_colOffset;
-    I2CManager.write(m_i2cAddr, 4,
-      0x00,    // Set to command mode
-      SSD1306_SETLOWCOLUMN | (m_col & 0XF), 
-      SSD1306_SETHIGHCOLUMN | (m_col >> 4),
-      SSD1306_SETSTARTPAGE | (m_row/8));
+    // Before using buffer, wait for last request to complete
+    requestBlock.wait();
+    // Build output buffer for I2C
+    uint8_t len = 0;
+    outputBuffer[len++] = 0x00;  // Set to command mode
+    outputBuffer[len++] = SSD1306_SETLOWCOLUMN | (m_col & 0XF);
+    outputBuffer[len++] = SSD1306_SETHIGHCOLUMN | (m_col >> 4);
+    outputBuffer[len++] = SSD1306_SETSTARTPAGE | (m_row/8);
+    I2CManager.write(m_i2cAddr, outputBuffer, len, &requestBlock);
   }
 }
 //------------------------------------------------------------------------------
@@ -188,17 +195,19 @@ size_t SSD1306AsciiWire::writeNative(uint8_t ch) {
 #endif
   ch -= m_fontFirstChar;
   base += fontWidth * ch;
-  uint8_t buffer[1+fontWidth+letterSpacing];
-  buffer[0] = 0x40;     // set SSD1306 controller to data mode
+  // Before using buffer, wait for last request to complete
+  requestBlock.wait();
+  // Build output buffer for I2C
+  outputBuffer[0] = 0x40;     // set SSD1306 controller to data mode
   uint8_t bufferPos = 1;
   // Copy character pixel columns
   for (uint8_t i = 0; i < fontWidth; i++) 
-    buffer[bufferPos++] = GETFLASH(base++);
+    outputBuffer[bufferPos++] = GETFLASH(base++);
   // Add blank pixels between letters
   for (uint8_t i = 0; i < letterSpacing; i++) 
-    buffer[bufferPos++] = 0;
+    outputBuffer[bufferPos++] = 0;
   // Write the data to I2C display
-  I2CManager.write(m_i2cAddr, buffer, bufferPos);
+  I2CManager.write(m_i2cAddr, outputBuffer, bufferPos, &requestBlock);
   return 1;
 }
 

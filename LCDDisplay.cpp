@@ -88,6 +88,10 @@ LCDDisplay *LCDDisplay::loop2(bool force) {
     slot = 0;
   }
 
+  // If output device is busy, don't do anything on this loop
+  //  This avoids blocking while waiting for the device to complete.
+  if (isBusy()) return NULL;  
+
   do {
     if (bufferPointer == 0) {
       // Find a line of data to write to the screen.

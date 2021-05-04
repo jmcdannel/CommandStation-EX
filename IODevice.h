@@ -31,10 +31,7 @@ typedef uint16_t VPIN;
 #define VPIN_MAX 32767  // Above this number, printing gives negative values.  This should be high enough
 #define VPIN_NONE 65535
 
-
-enum DeviceType {
-  Analogue = 0xDAC
-};
+#ifdef IO_LATEBINDING
 
 class IODeviceType;
 class IODevice;
@@ -46,8 +43,6 @@ class IODevice;
  * of devices.
  * 
  */
-
-#ifdef IO_LATEBINDING
 class IODeviceType {
 public:
   IODeviceType(int deviceType) { _deviceType = deviceType; }
@@ -103,11 +98,16 @@ public:
   // remove deletes the device associated with the vpin, if it is deletable
   static void remove(VPIN vpin);
 
-  // When a turnout needs to allocate a vpin as its output, it allocates one using ID+turnoutVpinOffset.
-  //  static const VPIN turnoutVpinOffset = 300; 
-
   // VPIN of first PCA9685 servo controller pin.  
   static const VPIN firstServoVpin = 100;
+
+  // Enable shared interrupt on specified pin for GPIO extender modules.  The extender module
+  // should pull down this pin when requesting a scan.  The pin may be shared by multiple modules.
+  void setGPIOInterruptPin(int16_t pinNumber) {
+    if (pinNumber >= 0)
+      pinMode(pinNumber, INPUT_PULLUP);
+    _gpioInterruptPin = pinNumber;
+  }
   
 protected:
 #ifdef IO_LATEBINDING
@@ -164,6 +164,10 @@ protected:
   VPIN _firstVpin;
   int _nPins;
 
+  // Pin number of interrupt pin for GPIO extender devices.  The device will pull this
+  //  pin low if an input changes state.
+  int16_t _gpioInterruptPin = -1;
+
   // Static support function for subclass creation
   static void addDevice(IODevice *newDevice);
 
@@ -176,8 +180,6 @@ private:
   IODevice *_nextDevice = 0;
   static IODevice *_firstDevice;
 
-  // Chain of installed device driver types
-  static IODeviceType *_firstDeviceType;
 };
 
 
@@ -206,6 +208,10 @@ private:
   uint8_t _I2CAddress; // 0x40-0x43 used
   // Number of modules configured
   uint8_t _nModules;
+
+  // structures for setting up non-blocking writes to servo controller
+  I2CRB requestBlock;
+  uint8_t outputBuffer[5];
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -239,12 +245,14 @@ private:
   static const int _maxModules = 8;
   uint8_t *_portInputState; 
   uint8_t *_portOutputState;
-  uint8_t *_portCounter;
-  // Interval between ticks when counters are updated
-  static const int _portTickTime = 500;
-  // Number of ticks to elapse before cached port values expire.
-  static const int _minTicksBetweenPortReads = 4;
+  // Interval between refreshes of each input port
+  static const int _portTickTime = 4000;
   unsigned long _lastLoopEntry = 0;
+
+  I2CRB requestBlock;
+  int8_t currentPollDevice = -1;
+  uint8_t inputBuffer[1];  // One eight-bit register.
+  uint8_t outputBuffer[1]; // Register number
 };
 
 
@@ -283,22 +291,26 @@ private:
   static const int _maxModules = 8;
   uint16_t *_currentPortState;  // GPIOA in LSB and GPIOB in MSB
   uint16_t *_portMode;
-  uint16_t *_portPullup;
-  uint8_t *_portCounter;
-  // Interval between ticks when counters are updated
-  static const int _portTickTime = 500;
-  // Number of ticks to elapse before cached port values expire.
-  static const int _minTicksBetweenPortReads = 4;
+  uint16_t *_portPullup;  uint8_t *_portCounter;
+  // Interval between refreshes of each input port
+  static const int _portTickTime = 4000;
   unsigned long _lastLoopEntry = 0;
+
+  I2CRB requestBlock;
+  int8_t currentPollDevice = -1;
+  uint8_t inputBuffer[2];  // Two eight-bit registers.
+  uint8_t outputBuffer[1]; // Register number
 
   enum {
     REG_IODIRA = 0x00,
     REG_IODIRB = 0x01,
+    REG_GPINTENA = 0x04,
+    REG_GPINTENB = 0x05,
     REG_IOCON = 0x0A,
     REG_GPPUA = 0x0C,
     REG_GPPUB = 0x0D,
     REG_GPIOA = 0x12,
-    REG_GPIOB = 0x13
+    REG_GPIOB = 0x13,
   };
 };
 
@@ -341,11 +353,14 @@ private:
   uint8_t *_portInputState; 
   uint8_t *_portOutputState;
   uint8_t *_portCounter;
-  // Interval between ticks when counters are updated
-  static const int _portTickTime = 500;
-  // Number of ticks to elapse before cached port values expire.
-  static const int _minTicksBetweenPortReads = 4;
+  // Interval between successive input port scan cycles
+  static const int _portTickTime = 4000;
   unsigned long _lastLoopEntry = 0;
+
+  I2CRB requestBlock;
+  int8_t currentPollDevice = -1;
+  uint8_t outputBuffer[1]; // Register number
+  uint8_t inputBuffer[1];  // One 8-bit register value
 
   enum {
     // Register definitions for MCP23008
