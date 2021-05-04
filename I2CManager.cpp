@@ -21,6 +21,20 @@
 #include "I2CManager.h"
 #include "DIAG.h"
 
+// Include target-specific portions of I2CManager class
+
+#if defined(USE_WIRE) 
+#include "I2CManager_Wire.h"
+#elif defined(ARDUINO_ARCH_AVR)
+#include "I2CManager_NonBlocking.h"
+#include "I2CManager_AVR.h"       // Uno/Nano/Mega2560
+#elif defined(ARDUINO_ARCH_MEGA)
+#include "I2CManager_NonBlocking.h"
+#include "I2CManager_Mega4809.h"  // NanoEvery/UnoWifi
+#else
+#include "I2CManager_Wire.h"      // Other platforms
+#endif
+
 
 // If not already initialised, initialise I2C
 void I2CManagerClass::begin(void) {
@@ -132,8 +146,11 @@ uint8_t I2CManagerClass::finishRB(I2CRB *rb, uint8_t status) {
   return status;
 }
 
-// Declare singleton class instance.
+/***************************************************************************
+ *  Declare singleton class instance.
+ ***************************************************************************/
 I2CManagerClass I2CManager = I2CManagerClass();
+
 
 /////////////////////////////////////////////////////////////////////////////
 // Helper functions associated with I2C Request Block
@@ -144,8 +161,16 @@ I2CManagerClass I2CManager = I2CManagerClass();
  ***************************************************************************/
 uint8_t I2CRB::wait() {
   while(status==I2C_STATUS_PENDING)
-    I2CManager.loop();
+    I2CManager.checkForTimeout();
   return status;
+}
+
+/***************************************************************************
+ *  Check whether request is still in progress.
+ ***************************************************************************/
+bool I2CRB::isBusy() {
+  I2CManager.checkForTimeout();
+  return (status==I2C_STATUS_PENDING);
 }
 
 /***************************************************************************
@@ -161,7 +186,8 @@ void I2CRB::setReadParams(uint8_t i2cAddress, uint8_t *readBuffer, uint8_t readL
   this->status = I2C_STATUS_OK;
 }
 
-void I2CRB::setRequestParams(uint8_t i2cAddress, uint8_t *readBuffer, uint8_t readLen, const uint8_t *writeBuffer, uint8_t writeLen) {
+void I2CRB::setRequestParams(uint8_t i2cAddress, uint8_t *readBuffer, uint8_t readLen, 
+    const uint8_t *writeBuffer, uint8_t writeLen) {
   this->i2cAddress = i2cAddress;
   this->writeBuffer = writeBuffer;
   this->writeLen = writeLen;
@@ -179,9 +205,3 @@ void I2CRB::setWriteParams(uint8_t i2cAddress, const uint8_t *writeBuffer, uint8
   this->status = I2C_STATUS_OK;
 }
 
-
-#ifndef USE_WIRE
-#include "I2CManager_AVR.h"
-#else
-#include "I2CManager_Wire.h"
-#endif

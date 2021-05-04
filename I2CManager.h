@@ -17,14 +17,15 @@
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef I2CManager_h
-#define I2CManager_h
+#ifndef I2CMANAGER_H
+#define I2CMANAGER_H
 
 #include "FSH.h"
 
 /* 
  * Manager for I2C communications.  For portability, it allows use 
- * of the Wire class, but also has a native implementation for AVR.
+ * of the Wire class, but also has a native implementation for AVR
+ * which supports non-blocking queued I/O requests.
  * 
  * Helps to avoid calling Wire.begin() multiple times (which is not)
  * entirely benign as it reinitialises).
@@ -34,7 +35,50 @@
  * 
  * Thirdly, it provides a convenient way to check whether there is a 
  * device on a particular I2C address.
+ * 
+ * Non-blocking requests are issued by creating an I2C Request Block
+ * (I2CRB) which is then added to the I2C manager's queue.  The 
+ * application refers to this block to check for completion of the
+ * operation, and for reading completion status.
+ * 
+ * Examples:
+ *  I2CRB rb;
+ *  uint8_t status = I2CManager.write(address, buffer, sizeof(buffer), &rb);
+ *  ...
+ *  if (!rb.isBusy()) {
+ *    status = rb.status;
+ *    // Repeat write
+ *    I2CManager.queueRequest(&rb);
+ *    ...
+ *    status = rb.wait(); // Wait for completion and read status
+ *  }
+ *  ...
+ *  I2CRB rb2;
+ *  outbuffer[0] = 12;  // Register number in I2C device to be read
+ *  rb2.setRequestParams(address, inBuffer, 1, outBuffer, 1);
+ *  status = I2CManager.queueRequest(&rb2);
+ *  if (status == I2C_STATUS_OK) { 
+ *    status = rb2.wait();
+ *    if (status == I2C_STATUS_OK) {
+ *      registerValue = inBuffer[0];
+ *    }
+ *  }
+ *  ...
+ *  
+ * Synchronous (blocking) calls are also possible, e.g. 
+ *  status = I2CManager.write(address, buffer, sizeof(buffer));
+ * 
+ * When using non-blocking requests, neither the I2CRB nor the input or output
+ * buffers should be modified until the I2CRB is complete (not busy).
+ * 
+ * Timeout monitoring is possible, but requires that the following call is made
+ * reasonably frequently in the program's loop() function:
+ *  I2CManager.loop();
+ * 
  */
+
+// Define USE_WIRE to force use of the Wire/TWI library (blocking I2C).
+//#define USE_WIRE
 
 enum {
   I2C_STATUS_OK=0,
@@ -56,15 +100,10 @@ typedef enum : uint8_t
 } OperationEnum;
 
 
+// Default I2C frequency
 #ifndef I2C_FREQ
 #define I2C_FREQ    400000
 #endif
-
-// Define the following preprocessor symbol to use the standard Arduino Wire library.
-#ifndef ARDUINO_ARCH_AVR
-#define USE_WIRE
-#endif
-//#define USE_WIRE
 
 // Struct defining a request context for an I2C operation.
 struct I2CRB {
@@ -72,7 +111,7 @@ struct I2CRB {
   uint8_t nBytes; // Number of bytes read
 
   uint8_t wait();
-  inline bool isBusy() { return status==I2C_STATUS_PENDING; };
+  bool isBusy();
   inline void init() { status = I2C_STATUS_OK; };
   void setReadParams(uint8_t i2cAddress, uint8_t *readBuffer, uint8_t readLen);
   void setRequestParams(uint8_t i2cAddress, uint8_t *readBuffer, uint8_t readLen, const uint8_t *writeBuffer, uint8_t writeLen);
@@ -122,9 +161,8 @@ public:
     uint8_t writeSize, ...);
   void queueRequest(I2CRB *req);
 
-
-  // Loop function for handling timeouts etc.
-  void loop();
+  // Function to abort long-running operations.
+  void checkForTimeout();
 
 private:
   bool _beginCompleted = false;
@@ -153,9 +191,9 @@ private:
     uint8_t   txCount;
     uint8_t   rxCount;
     uint8_t   tries;
-    uint8_t   retryCount;
     unsigned long startTime;
-    unsigned long timeout = 0; // Transaction timeout in microseconds.  0=disabled.
+
+    unsigned long timeout = 25000; // Transaction timeout in microseconds.  0=disabled.
     
     void                    startTransaction();
     
@@ -166,8 +204,7 @@ private:
     void                    I2C_close(I2CRB *);
     
   public:
-    void setRetryCount(uint8_t count) {retryCount = count;};
-    void setTimeout(uint16_t value) { timeout = value;};
+    void setTimeout(unsigned long value) { timeout = value;};
 
     void handleInterrupt();
 #endif
