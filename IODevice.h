@@ -180,6 +180,8 @@ private:
   IODevice *_nextDevice = 0;
   static IODevice *_firstDevice;
 
+  static IODevice *_nextLoopDevice;
+
 };
 
 

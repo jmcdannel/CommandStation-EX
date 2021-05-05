@@ -62,9 +62,10 @@ void IODevice::begin() {
 void IODevice::loop() {
   unsigned long currentMicros = micros();
   // Call every device's loop function in turn.
-  for (IODevice *dev = _firstDevice; dev != 0; dev = dev->_nextDevice) {
-    dev->_loop(currentMicros);
-  }
+  if (!_nextLoopDevice) _nextLoopDevice = _firstDevice;
+  _nextLoopDevice->_loop(currentMicros);
+  _nextLoopDevice = _nextLoopDevice->_nextDevice;
+  I2CManager.loop();
 
   // Report loop time if diags enabled
 //#if defined(DIAG_IO)
@@ -111,6 +112,10 @@ void IODevice::remove(VPIN vpin) {
     if (dev->owns(vpin)) {
       // Found object
       if (dev->_isDeletable()) {
+        // First check it isn't next one to be processed by loop().
+        //   If so, skip to the following one.
+        if (dev == _nextLoopDevice) 
+          _nextLoopDevice = _nextLoopDevice->_nextDevice;
         // Now unlink
         if (!previousDev)
           _firstDevice = dev->_nextDevice;
@@ -228,6 +233,9 @@ bool IODevice::_isDeletable() {
 
 // Start of chain of devices.
 IODevice *IODevice::_firstDevice = 0;
+
+// Reference to next device to be called on _loop() method.
+IODevice *IODevice::_nextLoopDevice = 0;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
