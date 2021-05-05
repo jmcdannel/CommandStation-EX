@@ -27,9 +27,9 @@
 #elif defined(ARDUINO_ARCH_AVR)
 #include "I2CManager_NonBlocking.h"
 #include "I2CManager_AVR.h"       // Uno/Nano/Mega2560
-// #elif defined(ARDUINO_ARCH_MEGAAVR) 
-// #include "I2CManager_NonBlocking.h"
-// #include "I2CManager_Mega4809.h"  // NanoEvery/UnoWifi
+#elif defined(ARDUINO_ARCH_MEGAAVR) 
+#include "I2CManager_NonBlocking.h"
+#include "I2CManager_Mega4809.h"  // NanoEvery/UnoWifi
 #else
 #define USE_WIRE
 #include "I2CManager_Wire.h"      // Other platforms

@@ -23,13 +23,27 @@
 #include <Arduino.h>
 #include "I2CManager.h"
 
-//#define TWI_TWBR  ((F_CPU / I2C_FREQ) - 16) / 2 // TWI Bit rate Register setting.
-
 /***************************************************************************
  *  Set I2C clock speed register.
  ***************************************************************************/
-void I2CManagerClass::_setClock(unsigned long i2cClockSpeed) {
-  // TODO: set clock speed register
+void I2CManagerClass::I2C_setClock(unsigned long i2cClockSpeed) {
+  uint16_t t_rise;
+  if (i2cClockSpeed < 200000) {
+    i2cClockSpeed = 100000;
+    t_rise = 1000;
+  } else if (i2cClockSpeed < 800000) {
+    i2cClockSpeed = 400000;
+    t_rise = 300;
+  } else if (i2cClockSpeed < 1200000) {
+    i2cClockSpeed = 1000000;
+    t_rise = 120;
+  } else {
+    i2cClockSpeed = 100000;
+    t_rise = 1000;
+  }
+  uint32_t baud = (F_CPU_CORRECTED / i2cClockSpeed - F_CPU_CORRECTED / 1000 / 1000
+    * t_rise / 1000 - 10) / 2;
+  TWI0.MBAUD = (uint8_t)baud;
 }
 
 /***************************************************************************
@@ -37,15 +51,14 @@ void I2CManagerClass::_setClock(unsigned long i2cClockSpeed) {
  ***************************************************************************/
 void I2CManagerClass::I2C_init()
 { 
-  pinMode(SDA, INPUT_PULLUP);
-  pinMode(SCL, INPUT_PULLUP);
-
+  pinMode(PIN_WIRE_SDA, INPUT_PULLUP);
+  pinMode(PIN_WIRE_SCL, INPUT_PULLUP);
   PORTMUX.TWISPIROUTEA |= TWI_MUX;
+
+  I2C_setClock(I2C_FREQ);
 
   TWI0.MCTRLA = TWI_RIEN_bm | TWI_WIEN_bm | TWI_ENABLE_bm;
   TWI0.MSTATUS = TWI_BUSSTATE_IDLE_gc;
-
-  // TODO: set clock speed register
 }
 
 /***************************************************************************
@@ -54,9 +67,9 @@ void I2CManagerClass::I2C_init()
 void I2CManagerClass::I2C_startTransaction() {
   // If anything to send, send it first.
   if (operation == OPERATION_READ || operation == OPERATION_REQUEST)
-    TWI0.MADDR = (currentRequest->i2cAddress << 1) | 0;
-  else
     TWI0.MADDR = (currentRequest->i2cAddress << 1) | 1;
+  else
+    TWI0.MADDR = (currentRequest->i2cAddress << 1) | 0;
 }
 
 /***************************************************************************
@@ -78,23 +91,21 @@ void I2CManagerClass::I2C_close() {
  ***************************************************************************/
 void I2CManagerClass::I2C_handleInterrupt() {
   
-  if( (status == I2C_STATUS_FREE) || (status == I2C_STATUS_CLOSING ) ) 
+  if( (status == I2C_STATE_FREE) || (status == I2C_STATE_CLOSING ) ) 
     return;
     
   // Find current (active) request block.
   I2CRB *t = queueHead;
   
   uint8_t currentStatus = TWI0.MSTATUS;
-
-  if (currentStatus & TWI_ARBLOST_bm) {
-    status = I2C_STATUS_ARBITRATION_LOST;
-    TWI0.MSTATUS = currentStatus; // clear all flags
-  } else if (currentStatus & TWI_BUSERR_bm) {
-    status = I2C_STATUS_BUS_ERROR;
-    TWI0.MSTATUS = currentStatus; // clear all flags
-  } else if (currentStatus & TWI_WIF_bm) {
-    // Master write completed
+  uint8_t currentStatus2 = currentStatus & (TWI_ARBLOST_bm | TWI_BUSERR_bm | TWI_WIF_bm | TWI_RIF_bm);
+  if (currentStatus2 == TWI_WIF_bm) {
+    // Master write completed without errors
     if (currentStatus & TWI_RXACK_bm) {
+      // Nacked, send stop.
+      TWI0.MCTRLB = TWI_MCMD_STOP_gc;
+      status = I2C_STATUS_NEGATIVE_ACKNOWLEDGE;
+    } else {
       // Acked
       if (bytesToSend) {
         // Send next byte
@@ -111,21 +122,32 @@ void I2CManagerClass::I2C_handleInterrupt() {
         TWI0.MCTRLB = TWI_MCMD_STOP_gc;
         status = I2C_STATUS_OK;  // Done
       }
-    } else {
-      // Nacked, send stop.
-      TWI0.MCTRLB = TWI_MCMD_STOP_gc;
-      status = I2C_STATUS_NEGATIVE_ACKNOWLEDGE;
     }
-  } else if (currentStatus & TWI_RIF_bm) {
-    // Master read completed.
+  } else if (currentStatus2 & TWI_RIF_bm) {
+    // Master read completed without errors
     if (bytesToReceive) {
       t->readBuffer[rxCount++] = TWI0.MDATA;  // Store received byte
       bytesToReceive--;
     } else { 
       // Buffer full, issue nack/stop
       TWI0.MCTRLB = TWI_ACKACT_bm | TWI_MCMD_STOP_gc;
+      bytesToReceive = 0;
       status = I2C_STATUS_OK;
     }
+    if (bytesToReceive) {
+      // More bytes to receive, issue ack and start another read
+      TWI0.MCTRLB = TWI_MCMD_RECVTRANS_gc;
+    } else {
+      // Transaction finished, issue NACK and STOP.
+      TWI0.MCTRLB = TWI_ACKACT_bm | TWI_MCMD_STOP_gc;
+      status = I2C_STATUS_OK;
+    }
+  } else if (currentStatus & TWI_ARBLOST_bm) {
+    status = I2C_STATUS_ARBITRATION_LOST;
+    TWI0.MSTATUS = currentStatus; // clear all flags
+  } else if (currentStatus & TWI_BUSERR_bm) {
+    status = I2C_STATUS_BUS_ERROR;
+    TWI0.MSTATUS = currentStatus; // clear all flags
   } else {
     // Unexpected state, finish.
     status = I2C_STATUS_UNEXPECTED_ERROR;
@@ -133,7 +155,9 @@ void I2CManagerClass::I2C_handleInterrupt() {
 }
 
 
-
+/***************************************************************************
+ *  Interrupt handler.
+ ***************************************************************************/
 ISR(TWI0_TWIM_vect) {
   I2CManagerClass::handleInterrupt();
 }

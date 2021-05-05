@@ -36,20 +36,22 @@
 #define DISABLED_IRQ_SECTION_LEAVE   SREG = sreg;              \
                                    }
 
-typedef enum : uint8_t
-{
-  I2C_STATUS_CLOSING=254,
-  I2C_STATUS_FREE=255,
-} InternalStatusEnum;
-
 /***************************************************************************
  * Initialise the I2CManagerAsync class.
  ***************************************************************************/
 void I2CManagerClass::_initialise()
 {
   queueHead = queueTail = NULL;
-  status = I2C_STATUS_FREE;
+  status = I2C_STATE_FREE;
   I2C_init();
+}
+
+/***************************************************************************
+ *  Set I2C clock speed.  Normally 100000 (Standard) or 400000 (Fast)
+ *   on Arduino.  Mega4809 supports 1000000 (Fast+) too.
+ ***************************************************************************/
+void I2CManagerClass::_setClock(unsigned long i2cClockSpeed) {
+  I2C_setClock(i2cClockSpeed);
 }
 
 /***************************************************************************
@@ -59,8 +61,8 @@ void I2CManagerClass::_initialise()
  ***************************************************************************/
 void I2CManagerClass::startTransaction() { 
   I2CRB *t = queueHead;
-  if ((t != NULL) && (status == I2C_STATUS_FREE)) {
-    status = I2C_STATUS_PENDING;
+  if ((t != NULL) && (status == I2C_STATE_FREE)) {
+    status = I2C_STATE_ACTIVE;
     rxCount = txCount = 0;
     // Copy key fields to static data for speed.
     currentRequest = t;
@@ -147,7 +149,7 @@ void I2CManagerClass::checkForTimeout() {
       // Try close and init, not entirely satisfactory but sort of works...
       I2C_close();  // Shutdown and restart twi interface
       I2C_init();
-      status = I2C_STATUS_FREE;
+      status = I2C_STATE_FREE;
       // Initiate next queued request
       startTransaction();
     }
@@ -173,7 +175,7 @@ void I2CManagerClass::handleInterrupt() {
       t->nBytes = rxCount;
       t->status = status;
     }
-    status = I2C_STATUS_FREE;
+    status = I2C_STATE_FREE;
 
     // Start next request (if any)
     I2CManager.startTransaction();
@@ -184,7 +186,7 @@ void I2CManagerClass::handleInterrupt() {
 I2CRB * volatile I2CManagerClass::queueHead = NULL;
 I2CRB * volatile I2CManagerClass::queueTail = NULL;
 I2CRB * I2CManagerClass::currentRequest = NULL;
-volatile uint8_t I2CManagerClass::status = I2C_STATUS_FREE;
+volatile uint8_t I2CManagerClass::status = I2C_STATE_FREE;
 uint8_t I2CManagerClass::txCount;
 uint8_t I2CManagerClass::rxCount;
 uint8_t I2CManagerClass::operation;

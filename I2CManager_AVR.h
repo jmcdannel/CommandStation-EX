@@ -55,7 +55,7 @@
 /***************************************************************************
  *  Set I2C clock speed register.
  ***************************************************************************/
-void I2CManagerClass::_setClock(unsigned long i2cClockSpeed) {
+void I2CManagerClass::I2C_setClock(unsigned long i2cClockSpeed) {
   TWBR = ((F_CPU / i2cClockSpeed) - 16) / 2;
 }
 
@@ -111,7 +111,7 @@ void I2CManagerClass::I2C_close() {
  ***************************************************************************/
 void I2CManagerClass::I2C_handleInterrupt() {
   
-  if( (status == I2C_STATUS_FREE) || (status == I2C_STATUS_CLOSING ) || (!currentRequest)) {
+  if( (status == I2C_STATE_FREE) || (status == I2C_STATE_CLOSING ) || (!currentRequest)) {
     TWCR |= (1<<TWINT);  // Clear interrupt
     return;
   }

@@ -77,9 +77,7 @@
  * 
  */
 
-// Define USE_WIRE to force use of the Wire/TWI library (blocking I2C).
-//#define USE_WIRE
-
+// Status codes for I2CRB structures.
 enum : uint8_t {
   I2C_STATUS_OK=0,
   I2C_STATUS_TRUNCATED=1,
@@ -93,13 +91,19 @@ enum : uint8_t {
   I2C_STATUS_PENDING=253,
 };
 
+// Status codes for the state machine (not returned to caller).
+enum : uint8_t {
+  I2C_STATE_ACTIVE=253,
+  I2C_STATE_FREE=254,
+  I2C_STATE_CLOSING=255,
+};
+
 typedef enum : uint8_t
 {
   OPERATION_READ = 1,
   OPERATION_REQUEST = 2,
   OPERATION_SEND = 3,
   OPERATION_SEND_P = 4,
-  //OPERATION_REQUEST_READ = 5, // Used internally as second phase of REQUEST
 } OperationEnum;
 
 
@@ -176,8 +180,8 @@ private:
   // Finish off request block by waiting for completion and posting status.
   uint8_t finishRB(I2CRB *rb, uint8_t status);
 
-  void _setClock(unsigned long i2cClockSpeed);
   void _initialise();
+  void _setClock(unsigned long);
 
 #ifndef USE_WIRE
     // I2CRB structs are queued on the following two links.
@@ -206,6 +210,7 @@ private:
     
     // Low-level hardware manipulation functions.
     static void I2C_init();
+    static void I2C_setClock(unsigned long i2cClockSpeed);
     static void I2C_handleInterrupt();
     static void I2C_startTransaction();
     static void I2C_stopTransaction();
