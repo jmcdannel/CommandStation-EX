@@ -116,6 +116,11 @@ void I2CManagerClass::queueRequest(I2CRB *req) {
   req->status = status;
 }
 
+/***************************************************************************
+ *  Loop function, for general background work
+ ***************************************************************************/
+void I2CManagerClass::loop() {}
+
 // Loop function
 void I2CManagerClass::checkForTimeout() {}
 

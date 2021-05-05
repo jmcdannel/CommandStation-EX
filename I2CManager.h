@@ -77,6 +77,8 @@
  * 
  */
 
+//#define USE_WIRE
+
 // Status codes for I2CRB structures.
 enum : uint8_t {
   I2C_STATUS_OK=0,
@@ -171,6 +173,9 @@ public:
   // Function to abort long-running operations.
   void checkForTimeout();
 
+  // Loop method
+  void loop();
+
 private:
   bool _beginCompleted = false;
   bool _clockSpeedFixed = false;
@@ -212,8 +217,8 @@ private:
     static void I2C_init();
     static void I2C_setClock(unsigned long i2cClockSpeed);
     static void I2C_handleInterrupt();
-    static void I2C_startTransaction();
-    static void I2C_stopTransaction();
+    static void I2C_sendStart();
+    static void I2C_sendStop();
     static void I2C_close();
     
   public:

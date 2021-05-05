@@ -160,8 +160,9 @@ I2CManagerClass I2CManager = I2CManagerClass();
  *  Block waiting for request block to complete, and return completion status
  ***************************************************************************/
 uint8_t I2CRB::wait() {
-  while(status==I2C_STATUS_PENDING)
-    I2CManager.checkForTimeout();
+  do
+    I2CManager.loop();
+  while (status==I2C_STATUS_PENDING);
   return status;
 }
 
@@ -169,7 +170,7 @@ uint8_t I2CRB::wait() {
  *  Check whether request is still in progress.
  ***************************************************************************/
 bool I2CRB::isBusy() {
-  I2CManager.checkForTimeout();
+  I2CManager.loop();
   return (status==I2C_STATUS_PENDING);
 }
 

@@ -31,10 +31,12 @@
 
 #define DISABLED_IRQ_SECTION_START {                           \
                                      uint8_t sreg = SREG;      \
-                                     cli();
+                                     noInterrupts();
 
 #define DISABLED_IRQ_SECTION_LEAVE   SREG = sreg;              \
                                    }
+
+#define ATOMIC(x) do { uint8_t sreg=SREG; cli(); {x} SREG=sreg; } while (false)
 
 /***************************************************************************
  * Initialise the I2CManagerAsync class.
@@ -57,9 +59,9 @@ void I2CManagerClass::_setClock(unsigned long i2cClockSpeed) {
 /***************************************************************************
  * Helper function to start operations, if the I2C interface is free and
  * there is a queued request to be processed.
- * MUST BE CALLED WITH INTERRUPTS INHIBITED.
  ***************************************************************************/
 void I2CManagerClass::startTransaction() { 
+  DISABLED_IRQ_SECTION_START;
   I2CRB *t = queueHead;
   if ((t != NULL) && (status == I2C_STATE_FREE)) {
     status = I2C_STATE_ACTIVE;
@@ -70,9 +72,10 @@ void I2CManagerClass::startTransaction() {
     bytesToSend = t->writeLen;
     bytesToReceive = t->readLen;
     // Start the I2C process going.
-    I2C_startTransaction();
+    I2C_sendStart();
     startTime = micros();
   }
+  DISABLED_IRQ_SECTION_LEAVE;
 }
 
 /***************************************************************************
@@ -87,9 +90,9 @@ void I2CManagerClass::queueRequest(I2CRB *req) {
     queueHead = queueTail = req;  // Only item on queue
   else
     queueTail = queueTail->nextRequest = req; // Add to end
+  DISABLED_IRQ_SECTION_LEAVE;
 
   startTransaction();
-  DISABLED_IRQ_SECTION_LEAVE;
 }
 
 /***************************************************************************
@@ -136,13 +139,14 @@ uint8_t I2CManagerClass::read(uint8_t i2cAddress, uint8_t *readBuffer, uint8_t r
 void I2CManagerClass::checkForTimeout() {
   unsigned long currentMicros = micros();
   DISABLED_IRQ_SECTION_START;
-  volatile I2CRB *t = queueHead;
+  I2CRB *t = queueHead;
   if (t && timeout > 0) {
     // Check for timeout
     if (currentMicros - startTime > timeout) { 
       // Excessive time. Dequeue request
       queueHead = t->nextRequest;
       if (!queueHead) queueTail = NULL;
+      currentRequest = NULL;
       // Post request as timed out.
       t->status = I2C_STATUS_TIMEOUT;
       // Reset TWI interface so it is able to continue
@@ -150,11 +154,18 @@ void I2CManagerClass::checkForTimeout() {
       I2C_close();  // Shutdown and restart twi interface
       I2C_init();
       status = I2C_STATE_FREE;
-      // Initiate next queued request
-      startTransaction();
     }
   }
   DISABLED_IRQ_SECTION_LEAVE;
+  // Initiate next queued request
+  startTransaction();
+}
+
+/***************************************************************************
+ *  Loop function, for general background work
+ ***************************************************************************/
+void I2CManagerClass::loop() {
+  checkForTimeout();
 }
 
 /***************************************************************************
@@ -162,16 +173,26 @@ void I2CManagerClass::checkForTimeout() {
  * if completed.
  ***************************************************************************/
 void I2CManagerClass::handleInterrupt() {
-  
+
   I2C_handleInterrupt();
+
+  // Experimental -- perform the post processing with interrupts enabled.
+  // If this causes problems, then take out the setting of the TWIE bit from
+  // I2C_handleInterrupt and instead, at the end of the interrupt
+  // handler, disable global interrupts and set TWIE before returning.
+  interrupts();
 
   if (status!=I2C_STATUS_PENDING) {
     // Remove completed request from head of queue
-    I2CRB * t = queueHead;
+    I2CRB * t;
+    noInterrupts();
+    t = queueHead;
     if (t != NULL) {
       queueHead = t->nextRequest;
       if (!queueHead) queueTail = queueHead;
-
+    }
+    interrupts();
+    if (t) {
       t->nBytes = rxCount;
       t->status = status;
     }

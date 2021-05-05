@@ -64,7 +64,7 @@ void I2CManagerClass::I2C_init()
 /***************************************************************************
  *  Initiate a start bit for transmission, followed by address and R/W
  ***************************************************************************/
-void I2CManagerClass::I2C_startTransaction() {
+void I2CManagerClass::I2C_sendStart() {
   // If anything to send, send it first.
   if (operation == OPERATION_READ || operation == OPERATION_REQUEST)
     TWI0.MADDR = (currentRequest->i2cAddress << 1) | 1;
@@ -75,7 +75,7 @@ void I2CManagerClass::I2C_startTransaction() {
 /***************************************************************************
  *  Initiate a stop bit for transmission.
  ***************************************************************************/
-void I2CManagerClass::I2C_stopTransaction() {
+void I2CManagerClass::I2C_sendStop() {
   TWI0.MCTRLB = TWI_MCMD_STOP_gc;
 }
 
@@ -83,7 +83,7 @@ void I2CManagerClass::I2C_stopTransaction() {
  *  Close I2C down
  ***************************************************************************/
 void I2CManagerClass::I2C_close() {
-  I2C_stopTransaction();
+  I2C_sendStop();
 }
 
 /***************************************************************************
@@ -91,12 +91,9 @@ void I2CManagerClass::I2C_close() {
  ***************************************************************************/
 void I2CManagerClass::I2C_handleInterrupt() {
   
-  if( (status == I2C_STATE_FREE) || (status == I2C_STATE_CLOSING ) ) 
-    return;
-    
-  // Find current (active) request block.
-  I2CRB *t = queueHead;
-  
+  // if( (status == I2C_STATE_FREE) || (status == I2C_STATE_CLOSING ) ) 
+  //   return;
+      
   uint8_t currentStatus = TWI0.MSTATUS;
   uint8_t currentStatus2 = currentStatus & (TWI_ARBLOST_bm | TWI_BUSERR_bm | TWI_WIF_bm | TWI_RIF_bm);
   if (currentStatus2 == TWI_WIF_bm) {
@@ -109,14 +106,14 @@ void I2CManagerClass::I2C_handleInterrupt() {
       // Acked
       if (bytesToSend) {
         // Send next byte
-        if (t->operation == OPERATION_SEND_P)
-          TWI0.MDATA = GETFLASH(t->writeBuffer + (txCount++));
+        if (currentRequest->operation == OPERATION_SEND_P)
+          TWI0.MDATA = GETFLASH(currentRequest->writeBuffer + (txCount++));
         else
-          TWI0.MDATA = t->writeBuffer[txCount++];
+          TWI0.MDATA = currentRequest->writeBuffer[txCount++];
         bytesToSend--;
       } else if (bytesToReceive) {
           // Send repeated start, address and read bit.
-          TWI0.MADDR = (t->i2cAddress << 1) | 1;
+          TWI0.MADDR = (currentRequest->i2cAddress << 1) | 1;
       } else {
         // No more data to send/receive. Initiate a STOP condition.
         TWI0.MCTRLB = TWI_MCMD_STOP_gc;
@@ -126,7 +123,7 @@ void I2CManagerClass::I2C_handleInterrupt() {
   } else if (currentStatus2 & TWI_RIF_bm) {
     // Master read completed without errors
     if (bytesToReceive) {
-      t->readBuffer[rxCount++] = TWI0.MDATA;  // Store received byte
+      currentRequest->readBuffer[rxCount++] = TWI0.MDATA;  // Store received byte
       bytesToReceive--;
     } else { 
       // Buffer full, issue nack/stop
