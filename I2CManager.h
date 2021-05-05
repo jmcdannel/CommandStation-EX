@@ -185,28 +185,31 @@ private:
     // Within the queue, each request's nextRequest field points to the 
     // next request, or NULL.
     // Mark volatile as they are updated by IRC and read/written elsewhere.
-    I2CRB * volatile queueHead;
-    I2CRB * volatile queueTail;
-    volatile uint8_t status;
+    static I2CRB * volatile queueHead;
+    static I2CRB * volatile queueTail;
+    static volatile uint8_t status;
 
-    uint8_t txCount;
-    uint8_t rxCount;
-    unsigned long startTime;
+    static uint8_t txCount;
+    static uint8_t rxCount;
+    static unsigned long startTime;
 
-    unsigned long timeout = 0; // Transaction timeout in microseconds.  0=disabled.
+    static unsigned long timeout; // Transaction timeout in microseconds.  0=disabled.
     
     void                    startTransaction();
     
-    void                    I2C_init();
-    void                    I2C_handle(I2CRB *);
-    void                    I2C_startTransaction(I2CRB *);
-    bool                    I2C_isStopped(I2CRB *);
-    void                    I2C_close(I2CRB *);
+    // Low-level hardware manipulation functions.
+    static void I2C_init();
+    static void I2C_handleInterrupt();
+    static void I2C_startTransaction();
+    static void I2C_stopTransaction();
+    static void I2C_waitForStop();
+    static void I2C_close();
     
   public:
     void setTimeout(unsigned long value) { timeout = value;};
 
-    void handleInterrupt();
+    // handleInterrupt needs to be public to be called from the ISR function!
+    static void handleInterrupt();
 #endif
 
 

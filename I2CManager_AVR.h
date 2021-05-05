@@ -76,39 +76,54 @@ void I2CManagerClass::I2C_init()
 /***************************************************************************
  *  Initiate a start bit for transmission.
  ***************************************************************************/
-void I2CManagerClass::I2C_startTransaction(I2CRB *)
-{
+void I2CManagerClass::I2C_startTransaction() {
+  // We may have initiated a stop bit before this without waiting for it.
+  // Wait for any pending stop bits to be sent before sending start.
+  I2C_waitForStop();
   TWCR = (1<<TWEN)|(1<<TWIE)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTA);  // Send Start
 }
 
 /***************************************************************************
- *  Test if I2C is in stopped state
+ *  Initiate a stop bit for transmission.
  ***************************************************************************/
-bool I2CManagerClass::I2C_isStopped(I2CRB *)
-{
-  return !( TWCR & _BV(TWSTO) );
+void I2CManagerClass::I2C_stopTransaction() {
+  // No point in setting TWIE as stop doesn't interrupt.
+  TWCR = (1<<TWEN)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTO);  // Send Stop
+}
+
+/***************************************************************************
+ *  Wait for stop bit transmission to complete.
+ ***************************************************************************/
+void I2CManagerClass::I2C_waitForStop() {
+  // This is the only point where the driver loops, and I'm not particularly 
+  // happy with it.  Could set a maximum number of loops.
+  // I've tried omitting this check but then the Stop bit is not
+  // reliably transmitted at low clock speeds.
+  while(TWCR & (1<<TWSTO)) ;      // Wait for Stop to be sent
 }
 
 /***************************************************************************
  *  Close I2C down
  ***************************************************************************/
-void I2CManagerClass::I2C_close(I2CRB *)
-{
+void I2CManagerClass::I2C_close() {
   // disable TWI
   TWDR = 0xFF;                       // Default content = SDA released.
-  TWCR = (1<<TWINT)|(1<<TWSTO);      // send stop and clear interrupt flag
+  I2C_stopTransaction();
+  I2C_waitForStop();
+  TWCR = (1<<TWINT);                 // clear any interrupt and stop twi.
 }
 
 /***************************************************************************
  *  Main state machine for I2C, called from interrupt handler.
  ***************************************************************************/
-void I2CManagerClass::I2C_handle(I2CRB * t) 
-{
+void I2CManagerClass::I2C_handleInterrupt() {
   
   if( (status == I2C_STATUS_FREE) || (status == I2C_STATUS_CLOSING ) ) {
     TWCR |= (1<<TWINT);  // Clear interrupt
     return;
   }
+  // Find current (active) request block.
+  I2CRB *t = queueHead;
   
   uint8_t twsr = TWSR & 0xF8;
 
@@ -128,14 +143,14 @@ void I2CManagerClass::I2C_handle(I2CRB * t)
         if( t->operation == OPERATION_SEND || t->operation == OPERATION_SEND_P)
         {
           // Initiate a STOP condition.
-          TWCR = (1<<TWEN)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTO);
+          I2C_stopTransaction();
           status = I2C_STATUS_OK;
         }
         else // request data (repeated start)
         {
            t->operation = OPERATION_REQUEST_READ;
            // repeated start
-           TWCR = (1<<TWEN)|(1<<TWIE)|(1<<TWINT)|(1<<TWSTA);                             //
+           I2C_startTransaction();
         }
       }
       break;
@@ -156,9 +171,7 @@ void I2CManagerClass::I2C_handle(I2CRB * t)
       break;
     case TWI_MRX_DATA_NACK:     // Data byte has been received and NACK transmitted
       t->readBuffer[rxCount++] = TWDR;
-
-      // send stop
-      TWCR = (1<<TWEN)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTO);
+      I2C_stopTransaction();   // Send stop
       status = I2C_STATUS_OK;
       break;
     case TWI_START:             // START has been transmitted  
@@ -179,26 +192,23 @@ void I2CManagerClass::I2C_handle(I2CRB * t)
       TWCR = (1<<TWEN)|(1<<TWIE)|(1<<TWINT)|(1<<TWEA);
       break;
     case TWI_ARB_LOST:          // Arbitration lost
-      TWCR = (1<<TWEN)|(1<<TWIE)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTA);                                // Initiate (re)start
+      I2C_startTransaction();  // Initiate (re)start
       break;
     case TWI_MTX_ADR_NACK:      // SLA+W has been transmitted and NACK received
-    case TWI_MRX_ADR_NACK:      // SLA+R has been transmitted and NACK received    
-      TWCR = (1<<TWEN)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTO);
-      status = I2C_STATUS_NEGATIVE_ACKNOWLEDGE;
-      break;
+    case TWI_MRX_ADR_NACK:      // SLA+R has been transmitted and NACK received
     case TWI_MTX_DATA_NACK:     // Data byte has been transmitted and NACK received
-      TWCR = (1<<TWEN)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTO);
+      I2C_stopTransaction();
       status = I2C_STATUS_NEGATIVE_ACKNOWLEDGE;
       break;
     case TWI_BUS_ERROR:         // Bus error due to an illegal START or STOP condition
-    default:     
-      TWCR = (1<<TWEN)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTO);    // send stop
+    default:
+      I2C_stopTransaction();
       status = I2C_STATUS_TRANSMIT_ERROR;
   }
 }
 
 ISR(TWI_vect) {
-  I2CManager.handleInterrupt();
+  I2CManagerClass::handleInterrupt();
 }
 
 #endif

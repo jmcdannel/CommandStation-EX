@@ -29,10 +29,17 @@
 #define USE_WIRE
 
 
+/***************************************************************************
+ *  Initialise I2C interface software
+ ***************************************************************************/
 void I2CManagerClass::_initialise() {
   Wire.begin();
 }
 
+/***************************************************************************
+ *  Set I2C clock speed.  Normally 100000 (Standard) or 400000 (Fast)
+ *   on Arduino.  Mega4809 supports 1000000 (Fast+) too.
+ ***************************************************************************/
 void I2CManagerClass::_setClock(unsigned long i2cClockSpeed) {
   Wire.setClock(i2cClockSpeed);
 }

@@ -60,7 +60,7 @@ void I2CManagerClass::startTransaction() {
   if( queueHead && (status == I2C_STATUS_FREE) ) {
     status = I2C_STATUS_PENDING;
     rxCount = txCount = 0;
-    I2C_startTransaction( queueHead );
+    I2C_startTransaction();
     startTime = micros();
   }
 }
@@ -138,7 +138,7 @@ void I2CManagerClass::checkForTimeout() {
       t->status = I2C_STATUS_TIMEOUT;
       // Reset TWI interface so it is able to continue
       // Try close and init, not entirely satisfactory but sort of works...
-      I2C_close(NULL);  // Shutdown and restart twi interface
+      I2C_close();  // Shutdown and restart twi interface
       I2C_init();
       status = I2C_STATUS_FREE;
       // Initiate next queued request
@@ -153,12 +153,13 @@ void I2CManagerClass::checkForTimeout() {
  * if completed.
  ***************************************************************************/
 void I2CManagerClass::handleInterrupt() {
-  I2CRB * t = queueHead;
-  if (!t) return;  // No active operation
-  I2C_handle(t);
+  
+  I2C_handleInterrupt();
 
   if (status!=I2C_STATUS_PENDING) {
     // Remove completed request from queue
+    I2CRB * t = queueHead;
+    if (!t) return;  // No active operation
     queueHead = t->nextRequest;
     if (!queueHead) queueTail = queueHead;
 
@@ -171,8 +172,17 @@ void I2CManagerClass::handleInterrupt() {
     status = I2C_STATUS_FREE;
 
     // Start next request (if any)
-    startTransaction();
+    I2CManager.startTransaction();
   }
 }
+
+// Fields in I2CManager class specific to Non-blocking implementation.
+I2CRB * volatile I2CManagerClass::queueHead = NULL;
+I2CRB * volatile I2CManagerClass::queueTail = NULL;
+volatile uint8_t I2CManagerClass::status = I2C_STATUS_FREE;
+uint8_t I2CManagerClass::txCount;
+uint8_t I2CManagerClass::rxCount;
+unsigned long I2CManagerClass::startTime;
+unsigned long I2CManagerClass::timeout = 0;
 
 #endif
