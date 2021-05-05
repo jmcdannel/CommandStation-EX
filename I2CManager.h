@@ -80,13 +80,16 @@
 // Define USE_WIRE to force use of the Wire/TWI library (blocking I2C).
 //#define USE_WIRE
 
-enum {
+enum : uint8_t {
   I2C_STATUS_OK=0,
   I2C_STATUS_TRUNCATED=1,
   I2C_STATUS_DEVICE_NOT_PRESENT=2,
   I2C_STATUS_TRANSMIT_ERROR=3,
   I2C_STATUS_NEGATIVE_ACKNOWLEDGE=4,
   I2C_STATUS_TIMEOUT=5,
+  I2C_STATUS_ARBITRATION_LOST=6,
+  I2C_STATUS_BUS_ERROR=7,
+  I2C_STATUS_UNEXPECTED_ERROR=8,
   I2C_STATUS_PENDING=253,
 };
 
@@ -96,13 +99,13 @@ typedef enum : uint8_t
   OPERATION_REQUEST = 2,
   OPERATION_SEND = 3,
   OPERATION_SEND_P = 4,
-  OPERATION_REQUEST_READ = 5, // Used internally as second phase of REQUEST
+  //OPERATION_REQUEST_READ = 5, // Used internally as second phase of REQUEST
 } OperationEnum;
 
 
 // Default I2C frequency
 #ifndef I2C_FREQ
-#define I2C_FREQ    400000
+#define I2C_FREQ    400000L
 #endif
 
 // Struct defining a request context for an I2C operation.
@@ -189,20 +192,23 @@ private:
     static I2CRB * volatile queueTail;
     static volatile uint8_t status;
 
+    static I2CRB *currentRequest;
     static uint8_t txCount;
     static uint8_t rxCount;
+    static uint8_t bytesToSend;
+    static uint8_t bytesToReceive;
+    static uint8_t operation;
     static unsigned long startTime;
 
     static unsigned long timeout; // Transaction timeout in microseconds.  0=disabled.
     
-    void                    startTransaction();
+    void startTransaction();
     
     // Low-level hardware manipulation functions.
     static void I2C_init();
     static void I2C_handleInterrupt();
     static void I2C_startTransaction();
     static void I2C_stopTransaction();
-    static void I2C_waitForStop();
     static void I2C_close();
     
   public:

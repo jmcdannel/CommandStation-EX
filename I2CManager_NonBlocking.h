@@ -25,8 +25,9 @@
 
 // This module is only compiled if USE_WIRE is not defined, so undefine it here
 // to get intellisense to work correctly.
+#ifdef USE_WIRE
 #undef USE_WIRE
-
+#endif
 
 #define DISABLED_IRQ_SECTION_START {                           \
                                      uint8_t sreg = SREG;      \
@@ -56,15 +57,21 @@ void I2CManagerClass::_initialise()
  * there is a queued request to be processed.
  * MUST BE CALLED WITH INTERRUPTS INHIBITED.
  ***************************************************************************/
-void I2CManagerClass::startTransaction() {
-  if( queueHead && (status == I2C_STATUS_FREE) ) {
+void I2CManagerClass::startTransaction() { 
+  I2CRB *t = queueHead;
+  if ((t != NULL) && (status == I2C_STATUS_FREE)) {
     status = I2C_STATUS_PENDING;
     rxCount = txCount = 0;
+    // Copy key fields to static data for speed.
+    currentRequest = t;
+    operation = t->operation;
+    bytesToSend = t->writeLen;
+    bytesToReceive = t->readLen;
+    // Start the I2C process going.
     I2C_startTransaction();
     startTime = micros();
   }
 }
-
 
 /***************************************************************************
  *  Function to queue a request block and initiate operations.
@@ -157,18 +164,15 @@ void I2CManagerClass::handleInterrupt() {
   I2C_handleInterrupt();
 
   if (status!=I2C_STATUS_PENDING) {
-    // Remove completed request from queue
+    // Remove completed request from head of queue
     I2CRB * t = queueHead;
-    if (!t) return;  // No active operation
-    queueHead = t->nextRequest;
-    if (!queueHead) queueTail = queueHead;
+    if (t != NULL) {
+      queueHead = t->nextRequest;
+      if (!queueHead) queueTail = queueHead;
 
-    // Update request status
-    if (t->operation == OPERATION_REQUEST_READ) 
-      t->operation = OPERATION_REQUEST; // reinstate original operation field
-    t->nBytes = rxCount;
-    t->status = status;
-
+      t->nBytes = rxCount;
+      t->status = status;
+    }
     status = I2C_STATUS_FREE;
 
     // Start next request (if any)
@@ -179,9 +183,13 @@ void I2CManagerClass::handleInterrupt() {
 // Fields in I2CManager class specific to Non-blocking implementation.
 I2CRB * volatile I2CManagerClass::queueHead = NULL;
 I2CRB * volatile I2CManagerClass::queueTail = NULL;
+I2CRB * I2CManagerClass::currentRequest = NULL;
 volatile uint8_t I2CManagerClass::status = I2C_STATUS_FREE;
 uint8_t I2CManagerClass::txCount;
 uint8_t I2CManagerClass::rxCount;
+uint8_t I2CManagerClass::operation;
+uint8_t I2CManagerClass::bytesToSend;
+uint8_t I2CManagerClass::bytesToReceive;
 unsigned long I2CManagerClass::startTime;
 unsigned long I2CManagerClass::timeout = 0;
 

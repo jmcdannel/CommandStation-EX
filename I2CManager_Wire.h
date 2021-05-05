@@ -26,8 +26,9 @@
 
 // This module is only compiled if USE_WIRE is defined, so define it here
 // to get intellisense to work correctly.
+#ifndef USE_WIRE
 #define USE_WIRE
-
+#endif
 
 /***************************************************************************
  *  Initialise I2C interface software

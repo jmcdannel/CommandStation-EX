@@ -27,12 +27,12 @@
 #elif defined(ARDUINO_ARCH_AVR)
 #include "I2CManager_NonBlocking.h"
 #include "I2CManager_AVR.h"       // Uno/Nano/Mega2560
-#elif defined(ARDUINO_ARCH_MEGA)
-#include "I2CManager_NonBlocking.h"
-#include "I2CManager_Mega4809.h"  // NanoEvery/UnoWifi
+// #elif defined(ARDUINO_ARCH_MEGAAVR) 
+// #include "I2CManager_NonBlocking.h"
+// #include "I2CManager_Mega4809.h"  // NanoEvery/UnoWifi
 #else
 #define USE_WIRE
-#include "I2CMANAGER_WIRE.h"  // Other platforms
+#include "I2CManager_Wire.h"      // Other platforms
 #endif
 
 
@@ -178,7 +178,6 @@ bool I2CRB::isBusy() {
  ***************************************************************************/
 void I2CRB::setReadParams(uint8_t i2cAddress, uint8_t *readBuffer, uint8_t readLen) {
   this->i2cAddress = i2cAddress;
-  this->writeBuffer = NULL;
   this->writeLen = 0;
   this->readBuffer = readBuffer;
   this->readLen = readLen;
@@ -201,6 +200,7 @@ void I2CRB::setWriteParams(uint8_t i2cAddress, const uint8_t *writeBuffer, uint8
   this->i2cAddress = i2cAddress;
   this->writeBuffer = writeBuffer;
   this->writeLen = writeLen;
+  this->readLen = 0;
   this->operation = OPERATION_SEND;
   this->status = I2C_STATUS_OK;
 }
