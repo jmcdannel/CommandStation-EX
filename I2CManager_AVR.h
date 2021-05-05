@@ -155,7 +155,7 @@ void I2CManagerClass::I2C_handleInterrupt() {
     case TWI_START:             // START has been transmitted  
     case TWI_REP_START:         // Repeated START has been transmitted
       // Set up address and R/W
-      if (operation == OPERATION_READ || operation == OPERATION_REQUEST)
+      if (operation == OPERATION_READ || (operation==OPERATION_REQUEST && !bytesToSend))
         TWDR = (currentRequest->i2cAddress << 1) | 1; // SLA+R
       else
         TWDR = (currentRequest->i2cAddress << 1) | 0; // SLA+W
