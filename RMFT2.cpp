@@ -24,6 +24,7 @@
 #include "DCCEXParser.h"
 #include "Sensors.h"
 #include "Turnouts.h"
+#include "Outputs.h"
 
 
 // Command parsing keywords
@@ -32,10 +33,8 @@ const int16_t HASH_KEYWORD_ON = 2657;
 const int16_t HASH_KEYWORD_SCHEDULE=-9179;
 const int16_t HASH_KEYWORD_RESERVE=11392;
 const int16_t HASH_KEYWORD_FREE=-23052;
-const int16_t HASH_KEYWORD_TL=2712;
-const int16_t HASH_KEYWORD_TR=2694;
-const int16_t HASH_KEYWORD_SET=27106;
-const int16_t HASH_KEYWORD_RESET=26133;
+const int16_t HASH_KEYWORD_LATCH=1618;  
+const int16_t HASH_KEYWORD_UNLATCH=1353;
 const int16_t HASH_KEYWORD_PAUSE=-4142;
 const int16_t HASH_KEYWORD_RESUME=27609;
 const int16_t HASH_KEYWORD_STATUS=-25932;
@@ -105,6 +104,14 @@ bool RMFT2::parseSlash(Print * stream, byte & paramCount, int16_t p[]) {
             case HASH_KEYWORD_RESUME: // </ RESUME>
                  if (paramCount!=1) return false;
                  pausingTask=NULL;
+                 {
+                  RMFT2 * task=loopTask;                 
+                  while(task) {
+                      if (task->loco) task->driveLoco(task->speedo);
+                      task=task->next;      
+                      if (task==loopTask) break;      
+                    }
+                 }        
                  return true;
                  
             case HASH_KEYWORD_STATUS: // </STATUS>
@@ -162,20 +169,12 @@ bool RMFT2::parseSlash(Print * stream, byte & paramCount, int16_t p[]) {
             case HASH_KEYWORD_FREE:  // force free a section
                  setFlag(p[1],0,SECTION_FLAG);
                  return true;
-                 
-            case HASH_KEYWORD_TL:  // force Turnout LEFT
-                 Turnout::activate(p[1], true);
-                 return true;
-                 
-            case HASH_KEYWORD_TR:  // Force Turnout RIGHT
-                 Turnout::activate(p[1], false);
-                 return true;
                 
-            case HASH_KEYWORD_SET:
+            case HASH_KEYWORD_LATCH:
                  setFlag(p[1], SENSOR_FLAG);
                  return true;
    
-            case HASH_KEYWORD_RESET:
+            case HASH_KEYWORD_UNLATCH:
                  setFlag(p[1], 0, SENSOR_FLAG);
                  return true;
                   
@@ -238,6 +237,7 @@ void RMFT2::driveLoco(byte speed) {
 }
 
 bool RMFT2::readSensor(short id) {
+  if (getFlag(id,SENSOR_FLAG)) return true; // latched on
   Sensor* sensor= Sensor::get(id); // real hardware sensor (-1 if not exists )
   short s= sensor? sensor->active : -1;
   if (s==1 && diag) DIAG(F("RMFT Sensor %d hit"),id);
@@ -346,14 +346,28 @@ void RMFT2::loop2() {
       if (millis()-waitAfter < 500 ) return;   
       break;
     
-    case OPCODE_SET:
+    case OPCODE_LATCH:
       setFlag(operand,SENSOR_FLAG);
       break;
     
-    case OPCODE_RESET:
+    case OPCODE_UNLATCH:
       setFlag(operand,0,SENSOR_FLAG);
       break;
 
+    case OPCODE_SET:
+      {
+        Output * o=Output::get(operand);
+        if (o) o->activate(true); 
+      }
+      break;
+  
+    case OPCODE_RESET:
+      {
+        Output * o=Output::get(operand);
+        if (o) o->activate(false); 
+      }
+      break;
+    
     case OPCODE_PAUSE:
          DCC::setThrottle(0,1,true);  // pause all locos on the track
          pausingTask=this;
