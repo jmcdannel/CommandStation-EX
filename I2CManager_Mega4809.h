@@ -66,7 +66,7 @@ void I2CManagerClass::I2C_init()
  ***************************************************************************/
 void I2CManagerClass::I2C_sendStart() {
   // If anything to send, send it first.
-  if (operation == OPERATION_READ || operation == OPERATION_REQUEST)
+  if (operation == OPERATION_READ || (operation == OPERATION_REQUEST & !bytesToSend))
     TWI0.MADDR = (currentRequest->i2cAddress << 1) | 1;
   else
     TWI0.MADDR = (currentRequest->i2cAddress << 1) | 0;
