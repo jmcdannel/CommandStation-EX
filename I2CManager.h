@@ -107,8 +107,8 @@ typedef enum : uint8_t
 
 // Struct defining a request context for an I2C operation.
 struct I2CRB {
-  uint8_t status; // Completion status
-  uint8_t nBytes; // Number of bytes read
+  volatile uint8_t status; // Completion status, or pending flag (updated from IRC)
+  volatile uint8_t nBytes; // Number of bytes read (updated from IRC)
 
   uint8_t wait();
   bool isBusy();
@@ -184,13 +184,13 @@ private:
     // queueTail is the pointer to the last request in the queue.
     // Within the queue, each request's nextRequest field points to the 
     // next request, or NULL.
-    I2CRB *queueHead;
-    I2CRB *queueTail;
+    // Mark volatile as they are updated by IRC and read/written elsewhere.
+    I2CRB * volatile queueHead;
+    I2CRB * volatile queueTail;
+    volatile uint8_t status;
 
-    uint8_t   status;
-    uint8_t   txCount;
-    uint8_t   rxCount;
-    uint8_t   tries;
+    uint8_t txCount;
+    uint8_t rxCount;
     unsigned long startTime;
 
     unsigned long timeout = 0; // Transaction timeout in microseconds.  0=disabled.

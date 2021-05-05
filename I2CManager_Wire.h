@@ -24,6 +24,11 @@
 #include <Wire.h>
 #include "I2CManager.h"
 
+// This module is only compiled if USE_WIRE is defined, so define it here
+// to get intellisense to work correctly.
+#define USE_WIRE
+
+
 void I2CManagerClass::_initialise() {
   Wire.begin();
 }

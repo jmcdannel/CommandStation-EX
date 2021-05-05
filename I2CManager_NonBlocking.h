@@ -23,6 +23,10 @@
 #include <Arduino.h>
 #include "I2CManager.h"
 
+// This module is only compiled if USE_WIRE is not defined, so undefine it here
+// to get intellisense to work correctly.
+#undef USE_WIRE
+
 
 #define DISABLED_IRQ_SECTION_START {                           \
                                      uint8_t sreg = SREG;      \
@@ -123,7 +127,7 @@ uint8_t I2CManagerClass::read(uint8_t i2cAddress, uint8_t *readBuffer, uint8_t r
 void I2CManagerClass::checkForTimeout() {
   unsigned long currentMicros = micros();
   DISABLED_IRQ_SECTION_START;
-  struct I2CRB *t = queueHead;
+  volatile I2CRB *t = queueHead;
   if (t && timeout > 0) {
     // Check for timeout
     if (currentMicros - startTime > timeout) { 
