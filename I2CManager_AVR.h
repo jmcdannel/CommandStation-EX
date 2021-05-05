@@ -183,10 +183,7 @@ void I2CManagerClass::I2C_handleInterrupt() {
 }
 
 ISR(TWI_vect) {
-  DDRE |= 0x10;
-  PORTE |= 0x10;
   I2CManagerClass::handleInterrupt();
-  PORTE &= ~0x10;
 }
 
 #endif
