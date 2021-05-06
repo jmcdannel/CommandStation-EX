@@ -81,7 +81,7 @@ void IODevice::loop() {
   count++;
   if (currentMicros - lastOutputTime > 5000000UL) {
     if (lastOutputTime > 0) 
-      LCD(3,F("Loop=%lus,%lus"), (unsigned long)5000000UL/count, maxElapsed);
+      LCD(1,F("Loop=%lus,%lus max"), (unsigned long)5000000UL/count, maxElapsed);
     maxElapsed = 0;
     count = 0;
     lastOutputTime = currentMicros;
