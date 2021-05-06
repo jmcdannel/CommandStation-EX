@@ -265,8 +265,8 @@ private:
  
 class MCP23017 : public IODevice {
 public:
-  static void create(VPIN vpin, int nPins, uint8_t I2CAddress);
-  static IODevice *createInstance(VPIN vpin, int nPins, uint8_t I2CAddress);
+  static void create(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin=-1);
+  static IODevice *createInstance(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin);
   
 private:
   // Constructor
@@ -323,8 +323,8 @@ private:
  
 class MCP23008 : public IODevice {
 public:
-  static IODevice *createInstance(VPIN vpin, int nPins, uint8_t I2CAddress);
-  static void create(VPIN vpin, int nPins, uint8_t I2CAddress) ;
+  static IODevice *createInstance(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin);
+  static void create(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin=-1) ;
 
 private:
   // Constructor

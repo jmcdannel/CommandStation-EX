@@ -26,13 +26,14 @@
 // Constructor
 MCP23017::MCP23017() {}
 
-IODevice *MCP23017::createInstance(VPIN firstVpin, int nPins, uint8_t I2CAddress) {
+IODevice *MCP23017::createInstance(VPIN firstVpin, int nPins, uint8_t I2CAddress, int interruptPin) {
   MCP23017 *dev = new MCP23017();
   dev->_firstVpin = firstVpin;
   dev->_nPins = min(nPins, 16*8);
   uint8_t nModules = (nPins+15)/16;
   dev->_nModules  = nModules;
   dev->_I2CAddress = I2CAddress;
+  dev->_gpioInterruptPin = interruptPin;
   // Allocate memory for module state
   uint8_t *blockStart = (uint8_t *)calloc(6, nModules);
   dev->_currentPortState = (uint16_t *)blockStart;  // two bytes per module
@@ -42,12 +43,16 @@ IODevice *MCP23017::createInstance(VPIN firstVpin, int nPins, uint8_t I2CAddress
   return dev;
 }
 
-void MCP23017::create(VPIN vpin, int nPins, uint8_t I2CAddress) {
-  createInstance(vpin, nPins, I2CAddress);
+void MCP23017::create(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin) {
+  createInstance(vpin, nPins, I2CAddress, interruptPin);
 }
   
 // Device-specific initialisation
 void MCP23017::_begin() { 
+  // Configure pin used for GPIO extender notification of change.
+  if (_gpioInterruptPin >= 0)
+    pinMode(_gpioInterruptPin, INPUT_PULLUP);
+
   // Initialise structure for reading GPIO registers
   outputBuffer[0] = REG_GPIOA;
   requestBlock.setRequestParams(0, inputBuffer, sizeof(inputBuffer), outputBuffer, sizeof(outputBuffer));
@@ -59,7 +64,7 @@ void MCP23017::_begin() {
     if (I2CManager.exists(address))
       DIAG(F("MCP23017 configured on I2C:x%x"), (int)address);
     _portMode[i] = 0xFFFF; // Default to input mode
-    _portPullup[i] = 0x00; // Default to pullup disabled
+    _portPullup[i] = 0xFFFF; // Default to pullup enabled
     _currentPortState[i] = 0x0000;
     // Initialise device registers (in case it's warm-starting)
     // IOCON is set MIRROR=1, ODR=1 (open drain shared interrupt pin)
@@ -79,6 +84,7 @@ bool MCP23017::_configurePullup(VPIN vpin, bool pullup) {
   #endif
   int deviceIndex = pin/16;
   pin %= 16; // Pin within device
+  uint8_t address = _I2CAddress+deviceIndex;
   uint16_t mask = 1 << pin;
   if (pullup)
     _portPullup[deviceIndex] |= mask;
@@ -86,9 +92,11 @@ bool MCP23017::_configurePullup(VPIN vpin, bool pullup) {
     _portPullup[deviceIndex] &= ~mask;
   // Only update the register that has changed.
   if (pin < 8)
-    I2CManager.write(_I2CAddress+deviceIndex, 2, REG_GPPUA, _portPullup[deviceIndex] & 0xff);  
+    I2CManager.write(address, 2, REG_GPPUA, _portPullup[deviceIndex] & 0xff);  
   else
-    I2CManager.write(_I2CAddress+deviceIndex, 2, REG_GPPUB, _portPullup[deviceIndex] >> 8);  
+    I2CManager.write(address, 2, REG_GPPUB, _portPullup[deviceIndex] >> 8);  
+  // Then read current port state (synchronous call)
+  _currentPortState[deviceIndex] = readRegister2(address, REG_GPIOA);
   return true;
 }
   

@@ -27,7 +27,7 @@
 // Constructor
 MCP23008::MCP23008() {}
 
-IODevice *MCP23008::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
+IODevice *MCP23008::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin) {
   #ifdef DIAG_IO
   DIAG(F("MCP23008 created Vpins:%d-%d I2C:%x"), vpin, vpin+nPins-1, I2CAddress);
   #endif
@@ -37,6 +37,7 @@ IODevice *MCP23008::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
   uint8_t nModules = (dev->_nPins + 7) / 8; // Number of modules in use.
   dev->_nModules = nModules;
   dev->_I2CAddress = I2CAddress;
+  dev->_gpioInterruptPin = interruptPin;
   // Allocate memory for module state
   uint8_t *blockStart = (uint8_t *)calloc(4, nModules);
   dev->_portDirection = blockStart;
@@ -51,12 +52,16 @@ IODevice *MCP23008::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
 // We allow up to 8 devices, on successive I2C addresses starting 
 // with the specified one.  VPINS are allocated contiguously, 8 
 // per device.
-void MCP23008::create(VPIN vpin, int nPins, uint8_t I2CAddress) {
-  createInstance(vpin, nPins, I2CAddress);
+void MCP23008::create(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin) {
+  createInstance(vpin, nPins, I2CAddress, interruptPin);
 }
 
 // Device-specific initialisation
-void MCP23008::_begin() {
+void MCP23008::_begin() {  // Configure pin used for GPIO extender notification of change.
+  if (_gpioInterruptPin >= 0)
+    pinMode(_gpioInterruptPin, INPUT_PULLUP);
+
+
   // Initialise structure for reading GPIO ports
   requestBlock.setRequestParams(0, inputBuffer, sizeof(inputBuffer), outputBuffer, sizeof(outputBuffer));
   inputBuffer[0] = REG_GPIO;
@@ -67,7 +72,7 @@ void MCP23008::_begin() {
     if (I2CManager.exists(_I2CAddress+i))
       DIAG(F("MCP23008 configured on I2C:x%x"), (int)_I2CAddress+i);
     _portDirection[i] = 0xff; // Defaults to Input mode
-    _portPullup[i] = 0x00; // Defaults to no pullup
+    _portPullup[i] = 0xff; // Defaults to pullup enabled
     _portInputState[i] = 0x00; 
     _portOutputState[i] = 0x00; // Defaults to output zero.
     // Initialise device (in case it's warm-starting)
@@ -85,13 +90,16 @@ bool MCP23008::_configurePullup(VPIN vpin, bool pullup) {
   #endif
   int deviceIndex = pin/8;
   pin %= 8; // Pin within device
+  uint8_t address = _I2CAddress+deviceIndex;
   uint8_t mask = 1 << pin;
   if (pullup) 
     _portPullup[deviceIndex] |= mask;
   else
     _portPullup[deviceIndex] &= ~mask;
-  I2CManager.write(_I2CAddress+deviceIndex, 2, REG_GPPU, _portPullup[deviceIndex]);  
-  return true;
+  I2CManager.write(address, 2, REG_GPPU, _portPullup[deviceIndex]);  
+  // Read GPIO register (synchronous)
+  _portInputState[deviceIndex] = readRegister(address, REG_GPIO);
+   return true;
 }
 
 
