@@ -106,10 +106,6 @@ void I2CManagerClass::I2C_close() {
  ***************************************************************************/
 void I2CManagerClass::I2C_handleInterrupt() {
   
-  // if( (status == I2C_STATE_FREE) || (status == I2C_STATE_CLOSING ) || (!currentRequest)) {
-  //   TWCR |= (1<<TWINT);  // Clear interrupt
-  //   return;
-  // }
   uint8_t twsr = TWSR & 0xF8;
 
   // Cases are ordered so that the most frequently used ones are tested first.
@@ -124,9 +120,11 @@ void I2CManagerClass::I2C_handleInterrupt() {
         bytesToSend--;
         TWCR = (1<<TWEN)|(1<<TWIE)|(1<<TWINT)|(1<<TWEA);
       } else if (bytesToReceive) {  // All sent, anything to receive?
-        I2C_sendStart();
+        while (TWCR & (1<<TWSTO)) ;     // Wait for stop to be sent
+        TWCR = (1<<TWEN)|(1<<TWIE)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTA);  // Send Start
       } else {  // Nothing left to send or receive
-        I2C_sendStop();
+        TWDR = 0xff;  // Default condition = SDA released
+        TWCR = (1<<TWEN)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTO);  // Send Stop
         status = I2C_STATUS_OK;
       }
       break;
@@ -149,7 +147,7 @@ void I2CManagerClass::I2C_handleInterrupt() {
         currentRequest->readBuffer[rxCount++] = TWDR;
         bytesToReceive--;
       }
-      I2C_sendStop();   // Send stop
+      TWCR = (1<<TWEN)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTO);  // Send Stop
       status = I2C_STATUS_OK;
       break;
     case TWI_START:             // START has been transmitted  
@@ -164,15 +162,18 @@ void I2CManagerClass::I2C_handleInterrupt() {
     case TWI_MTX_ADR_NACK:      // SLA+W has been transmitted and NACK received
     case TWI_MRX_ADR_NACK:      // SLA+R has been transmitted and NACK received
     case TWI_MTX_DATA_NACK:     // Data byte has been transmitted and NACK received
-      I2C_sendStop();
+      TWDR = 0xff;  // Default condition = SDA released
+      TWCR = (1<<TWEN)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTO);  // Send Stop
       status = I2C_STATUS_NEGATIVE_ACKNOWLEDGE;
       break;
     case TWI_ARB_LOST:          // Arbitration lost
-      I2C_sendStart();   // Initiate (re)start
+      while (TWCR & (1<<TWSTO)) ; // Wait for any outstanding stop bit to be sent
+      TWCR = (1<<TWEN)|(1<<TWIE)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTA);  // Send Start
       break;
     case TWI_BUS_ERROR:         // Bus error due to an illegal START or STOP condition
     default:
-      I2C_sendStop();
+      TWDR = 0xff;  // Default condition = SDA released
+      TWCR = (1<<TWEN)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTO);  // Send Stop
       status = I2C_STATUS_TRANSMIT_ERROR;
   }
 }
