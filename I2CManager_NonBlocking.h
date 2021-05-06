@@ -22,21 +22,13 @@
 
 #include <Arduino.h>
 #include "I2CManager.h"
+#include <util/atomic.h>
 
 // This module is only compiled if USE_WIRE is not defined, so undefine it here
 // to get intellisense to work correctly.
 #ifdef USE_WIRE
 #undef USE_WIRE
 #endif
-
-#define DISABLED_IRQ_SECTION_START {                           \
-                                     uint8_t sreg = SREG;      \
-                                     noInterrupts();
-
-#define DISABLED_IRQ_SECTION_LEAVE   SREG = sreg;              \
-                                   }
-
-#define ATOMIC(x) do { uint8_t sreg=SREG; cli(); {x} SREG=sreg; } while (false)
 
 /***************************************************************************
  * Initialise the I2CManagerAsync class.
@@ -61,21 +53,21 @@ void I2CManagerClass::_setClock(unsigned long i2cClockSpeed) {
  * there is a queued request to be processed.
  ***************************************************************************/
 void I2CManagerClass::startTransaction() { 
-  DISABLED_IRQ_SECTION_START;
-  I2CRB *t = queueHead;
-  if ((t != NULL) && (status == I2C_STATE_FREE)) {
-    status = I2C_STATE_ACTIVE;
-    rxCount = txCount = 0;
-    // Copy key fields to static data for speed.
-    currentRequest = t;
-    operation = t->operation;
-    bytesToSend = t->writeLen;
-    bytesToReceive = t->readLen;
-    // Start the I2C process going.
-    I2C_sendStart();
-    startTime = micros();
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    I2CRB *t = queueHead;
+    if ((t != NULL) && (status == I2C_STATE_FREE)) {
+      status = I2C_STATE_ACTIVE;
+      rxCount = txCount = 0;
+      // Copy key fields to static data for speed.
+      currentRequest = t;
+      operation = t->operation;
+      bytesToSend = t->writeLen;
+      bytesToReceive = t->readLen;
+      // Start the I2C process going.
+      I2C_sendStart();
+      startTime = micros();
+    }
   }
-  DISABLED_IRQ_SECTION_LEAVE;
 }
 
 /***************************************************************************
@@ -85,12 +77,12 @@ void I2CManagerClass::queueRequest(I2CRB *req) {
   req->status = I2C_STATUS_PENDING;
   req->nextRequest = NULL;
 
-  DISABLED_IRQ_SECTION_START;
-  if (!queueTail) 
-    queueHead = queueTail = req;  // Only item on queue
-  else
-    queueTail = queueTail->nextRequest = req; // Add to end
-  DISABLED_IRQ_SECTION_LEAVE;
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    if (!queueTail) 
+      queueHead = queueTail = req;  // Only item on queue
+    else
+      queueTail = queueTail->nextRequest = req; // Add to end
+  }
 
   startTransaction();
 }
@@ -138,25 +130,25 @@ uint8_t I2CManagerClass::read(uint8_t i2cAddress, uint8_t *readBuffer, uint8_t r
  ***************************************************************************/
 void I2CManagerClass::checkForTimeout() {
   unsigned long currentMicros = micros();
-  DISABLED_IRQ_SECTION_START;
-  I2CRB *t = queueHead;
-  if (t && timeout > 0) {
-    // Check for timeout
-    if (currentMicros - startTime > timeout) { 
-      // Excessive time. Dequeue request
-      queueHead = t->nextRequest;
-      if (!queueHead) queueTail = NULL;
-      currentRequest = NULL;
-      // Post request as timed out.
-      t->status = I2C_STATUS_TIMEOUT;
-      // Reset TWI interface so it is able to continue
-      // Try close and init, not entirely satisfactory but sort of works...
-      I2C_close();  // Shutdown and restart twi interface
-      I2C_init();
-      status = I2C_STATE_FREE;
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    I2CRB *t = queueHead;
+    if (t && timeout > 0) {
+      // Check for timeout
+      if (currentMicros - startTime > timeout) { 
+        // Excessive time. Dequeue request
+        queueHead = t->nextRequest;
+        if (!queueHead) queueTail = NULL;
+        currentRequest = NULL;
+        // Post request as timed out.
+        t->status = I2C_STATUS_TIMEOUT;
+        // Reset TWI interface so it is able to continue
+        // Try close and init, not entirely satisfactory but sort of works...
+        I2C_close();  // Shutdown and restart twi interface
+        I2C_init();
+        status = I2C_STATE_FREE;
+      }
     }
   }
-  DISABLED_IRQ_SECTION_LEAVE;
   // Initiate next queued request
   startTransaction();
 }
@@ -177,7 +169,7 @@ void I2CManagerClass::handleInterrupt() {
   I2C_handleInterrupt();
 
   // Experimental -- perform the post processing with interrupts enabled.
-  // If this causes problems, then take out the setting of the TWIE bit from
+  // If this causes problems, then try taking out the setting of the TWIE bit from
   // I2C_handleInterrupt and instead, at the end of the interrupt
   // handler, disable global interrupts and set TWIE before returning.
   interrupts();
@@ -185,18 +177,16 @@ void I2CManagerClass::handleInterrupt() {
   if (status!=I2C_STATUS_PENDING) {
     // Remove completed request from head of queue
     I2CRB * t;
-    noInterrupts();
-    t = queueHead;
-    if (t != NULL) {
-      queueHead = t->nextRequest;
-      if (!queueHead) queueTail = queueHead;
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+      t = queueHead;
+      if (t != NULL) {
+        queueHead = t->nextRequest;
+        if (!queueHead) queueTail = queueHead;
+        t->nBytes = rxCount;
+        t->status = status;
+      }
+      status = I2C_STATE_FREE;
     }
-    interrupts();
-    if (t) {
-      t->nBytes = rxCount;
-      t->status = status;
-    }
-    status = I2C_STATE_FREE;
 
     // Start next request (if any)
     I2CManager.startTransaction();
