@@ -184,6 +184,9 @@ size_t SSD1306AsciiWire::writeNative(uint8_t ch) {
 
   if (ch < m_fontFirstChar || ch >= (m_fontFirstChar + m_fontCharCount))
     return 0;
+  // Check if character would be partly or wholly off the display
+  if (m_col + fontWidth > m_displayWidth)
+    return 0;
 #if defined(NOLOWERCASE)
   // Adjust if lowercase is missing
   if (ch >= 'a') {
@@ -206,8 +209,10 @@ size_t SSD1306AsciiWire::writeNative(uint8_t ch) {
   // Add blank pixels between letters
   for (uint8_t i = 0; i < letterSpacing; i++) 
     outputBuffer[bufferPos++] = 0;
+
   // Write the data to I2C display
   I2CManager.write(m_i2cAddr, outputBuffer, bufferPos, &requestBlock);
+  m_col += fontWidth + letterSpacing;
   return 1;
 }
 
