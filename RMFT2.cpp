@@ -55,8 +55,11 @@ byte RMFT2::flags[MAX_FLAGS];
 /* static */ void RMFT2::begin() { 
   DCCEXParser::setRMFTFilter(RMFT2::ComandFilter);
   for (int f=0;f<MAX_FLAGS;f++) flags[f]=0;
+  int pcounter;
+  for (pcounter=0; GETFLASH(RMFT2::RouteCode+pcounter)!=OPCODE_ENDROUTES; pcounter+=2);
+  pcounter+=2; // include ENDROUTES opcode 
+  DIAG(F("RMFT myAutomation=%db, MAX_FLAGS=%d"), pcounter,MAX_FLAGS);
   new RMFT2(0); // add the startup route
-  DIAG(F("RMFT ready"));
 }
 
 // This filter intercepst <> commands to do the following:
