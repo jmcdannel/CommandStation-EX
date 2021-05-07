@@ -124,9 +124,12 @@ void Sensor::checkAll(Print *stream){
 
 void Sensor::printAll(Print *stream){
 
-  for(Sensor * tt=firstSensor;tt!=NULL;tt=tt->nextSensor){
-    if (stream != NULL)
-      StringFormatter::send(stream, F("<%c %d>\n"), tt->active ? 'Q' : 'q', tt->data.snum);
+  if (stream != NULL) {
+    for(Sensor * tt=firstSensor;tt!=NULL;tt=tt->nextSensor){
+      // JMRI currently seems not to accept sensor definitions with a <q> prefix, so split the definition and state notification
+      StringFormatter::send(stream, F("<Q %d %d %d>\n"), tt->data.snum, tt->data.pin, tt->data.pullUp); // definition
+      StringFormatter::send(stream, F("<%c %d>\n"), tt->active ? 'Q' : 'q', tt->data.snum); // current state
+    }
   } // loop over all sensors
 } // Sensor::printAll
 
