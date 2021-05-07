@@ -24,10 +24,10 @@
 #include <Wire.h>
 #include "I2CManager.h"
 
-// This module is only compiled if USE_WIRE is defined, so define it here
+// This module is only compiled if I2C_USE_WIRE is defined, so define it here
 // to get intellisense to work correctly.
-#ifndef USE_WIRE
-#define USE_WIRE
+#if !defined(I2C_USE_WIRE)
+#define I2C_USE_WIRE
 #endif
 
 /***************************************************************************

@@ -77,7 +77,41 @@
  * 
  */
 
-//#define USE_WIRE
+/* 
+ * Future enhancement possibility:
+ *
+ *  I2C Multiplexer (e.g. TCA9547, TCA9548)
+ * 
+ *  A multiplexer offers a way of extending the address range of I2C devices.  For example, GPIO extenders use address range 0x20-0x27
+ *  to are limited to 8 on a bus.  By adding a multiplexer, the limit becomes 8 for each of the multiplexer's 8 sub-buses, i.e. 64.
+ *  And a single I2C bus can have up to 8 multiplexers, giving up to 64 sub-buses and, in theory, up to 512 I/O extenders; that's 
+ *  as many as 8192 input/output pins!
+ *  Secondly, the capacitance of the bus is an electrical limiting factor of the length of the bus, speed and number of devices.
+ *  The multiplexer isolates each sub-bus from the others, and so reduces the capacitance of the bus.  For example, with one 
+ *  multiplexer and 64 GPIO extenders, only 9 devices are connected to the bus at any time (multiplexer plus 8 extenders). 
+ *  Thirdly, the multiplexer offers the ability to use mixed-speed devices more effectively, by allowing high-speed devices to be
+ *  put on a different bus to low-speed devices, enabling the software to switch the I2C speed on-the-fly between I2C transactions.
+ * 
+ *  Changes required:  Increase the size of the I2CAddress field in the IODevice class from uint8_t to uint16_t.
+ *  The most significant byte would contain a '1' bit flag, the multiplexer number (0-7) and bus number (0-7).  Then, when performing
+ *  an I2C operation, the I2CManager would check this byte and, if zero, do what it currently does.  If the byte is non-zero, then
+ *  that means the device is connected via a multiplexer so the I2C transaction should be preceded by a select command issued to the
+ *  relevant multiplexer.
+ * 
+ *  Non-interrupting I2C:
+ * 
+ *  I2C may be operated without interrupts (undefine I2C_USE_INTERRUPTS).  Instead, the I2C state
+ *  machine handler, currently invoked from the interrupt service routine, is invoked from the loop() function.
+ *  The speed at which I2C operations can be performed then becomes highly dependent on the frequency that 
+ *  the loop() function is called, and may be adequate under some circumstances.  
+ *  The advantage of NOT using interrupts is that the impact of I2C upon the DCC waveform (when accurate timing mode isn't in use)
+ *  becomes almost zero.
+ *  This mechanism is under evaluation and should not be relied upon as yet.
+ * 
+ */
+
+//#define I2C_USE_WIRE
+//#define I2C_USE_INTERRUPTS
 
 // Status codes for I2CRB structures.
 enum : uint8_t {
@@ -132,7 +166,7 @@ struct I2CRB {
   uint8_t i2cAddress;
   uint8_t *readBuffer;
   const uint8_t *writeBuffer;
-#ifndef USE_WIRE
+#if !defined(I2C_USE_WIRE)
   I2CRB *nextRequest;
 #endif
 };
@@ -180,7 +214,6 @@ private:
   bool _beginCompleted = false;
   bool _clockSpeedFixed = false;
   uint32_t _clockSpeed = 400000L;  // 400kHz max on Arduino.
-  int gpioExtenderInterruptPin = -1; // Arduino pin number for chained interrupts
 
   // Finish off request block by waiting for completion and posting status.
   uint8_t finishRB(I2CRB *rb, uint8_t status);
@@ -188,7 +221,7 @@ private:
   void _initialise();
   void _setClock(unsigned long);
 
-#ifndef USE_WIRE
+#if !defined(I2C_USE_WIRE)
     // I2CRB structs are queued on the following two links.
     // If there are no requests, both are NULL.
     // If there is only one request, then queueHead and queueTail both point to it.
@@ -201,13 +234,13 @@ private:
     static I2CRB * volatile queueTail;
     static volatile uint8_t status;
 
-    static I2CRB *currentRequest;
-    static uint8_t txCount;
-    static uint8_t rxCount;
-    static uint8_t bytesToSend;
-    static uint8_t bytesToReceive;
-    static uint8_t operation;
-    static unsigned long startTime;
+    static I2CRB * volatile currentRequest;
+    static volatile uint8_t txCount;
+    static volatile uint8_t rxCount;
+    static volatile uint8_t bytesToSend;
+    static volatile uint8_t bytesToReceive;
+    static volatile uint8_t operation;
+    static volatile unsigned long startTime;
 
     static unsigned long timeout; // Transaction timeout in microseconds.  0=disabled.
     

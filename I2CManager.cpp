@@ -22,7 +22,7 @@
 #include "DIAG.h"
 
 // Include target-specific portions of I2CManager class
-#if defined(USE_WIRE) 
+#if defined(I2C_USE_WIRE) 
 #include "I2CManager_Wire.h"
 #elif defined(ARDUINO_ARCH_AVR)
 #include "I2CManager_NonBlocking.h"
@@ -31,7 +31,7 @@
 #include "I2CManager_NonBlocking.h"
 #include "I2CManager_Mega4809.h"  // NanoEvery/UnoWifi
 #else
-#define USE_WIRE
+#define I2C_USE_WIRE
 #include "I2CManager_Wire.h"      // Other platforms
 #endif
 

@@ -22,12 +22,17 @@
 
 #include <Arduino.h>
 #include "I2CManager.h"
+#if defined(I2C_USE_INTERRUPTS)
 #include <util/atomic.h>
+#else
+#define ATOMIC_BLOCK(x) 
+#define ATOMIC_RESTORESTATE
+#endif
 
-// This module is only compiled if USE_WIRE is not defined, so undefine it here
+// This module is only compiled if I2C_USE_WIRE is not defined, so undefine it here
 // to get intellisense to work correctly.
-#ifdef USE_WIRE
-#undef USE_WIRE
+#if defined(I2C_USE_WIRE)
+#undef I2C_USE_WIRE
 #endif
 
 /***************************************************************************
@@ -55,14 +60,12 @@ void I2CManagerClass::_setClock(unsigned long i2cClockSpeed) {
 void I2CManagerClass::startTransaction() { 
   ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
     I2CRB *t = queueHead;
-    if ((t != NULL) && (status == I2C_STATE_FREE)) {
+    if ((status == I2C_STATE_FREE) && (t != NULL)) {
       status = I2C_STATE_ACTIVE;
+      currentRequest = t;
       rxCount = txCount = 0;
       // Copy key fields to static data for speed.
-      currentRequest = t;
-      operation = t->operation;
-      bytesToSend = t->writeLen;
-      bytesToReceive = t->readLen;
+      operation = currentRequest->operation;
       // Start the I2C process going.
       I2C_sendStart();
       startTime = micros();
@@ -146,17 +149,21 @@ void I2CManagerClass::checkForTimeout() {
         I2C_close();  // Shutdown and restart twi interface
         I2C_init();
         status = I2C_STATE_FREE;
+        
+        // Initiate next queued request
+        startTransaction();
       }
     }
   }
-  // Initiate next queued request
-  startTransaction();
 }
 
 /***************************************************************************
  *  Loop function, for general background work
  ***************************************************************************/
 void I2CManagerClass::loop() {
+#if !defined(I2C_USE_INTERRUPTS)
+  handleInterrupt();
+#endif
   checkForTimeout();
 }
 
@@ -169,9 +176,6 @@ void I2CManagerClass::handleInterrupt() {
   I2C_handleInterrupt();
 
   // Experimental -- perform the post processing with interrupts enabled.
-  // If this causes problems, then try taking out the setting of the TWIE bit from
-  // I2C_handleInterrupt and instead, at the end of the interrupt
-  // handler, disable global interrupts and set TWIE before returning.
   interrupts();
 
   if (status!=I2C_STATUS_PENDING) {
@@ -185,9 +189,9 @@ void I2CManagerClass::handleInterrupt() {
         t->nBytes = rxCount;
         t->status = status;
       }
+      // I2C state machine is now free for next request
       status = I2C_STATE_FREE;
     }
-
     // Start next request (if any)
     I2CManager.startTransaction();
   }
@@ -196,14 +200,14 @@ void I2CManagerClass::handleInterrupt() {
 // Fields in I2CManager class specific to Non-blocking implementation.
 I2CRB * volatile I2CManagerClass::queueHead = NULL;
 I2CRB * volatile I2CManagerClass::queueTail = NULL;
-I2CRB * I2CManagerClass::currentRequest = NULL;
+I2CRB * volatile I2CManagerClass::currentRequest = NULL;
 volatile uint8_t I2CManagerClass::status = I2C_STATE_FREE;
-uint8_t I2CManagerClass::txCount;
-uint8_t I2CManagerClass::rxCount;
-uint8_t I2CManagerClass::operation;
-uint8_t I2CManagerClass::bytesToSend;
-uint8_t I2CManagerClass::bytesToReceive;
-unsigned long I2CManagerClass::startTime;
+volatile uint8_t I2CManagerClass::txCount;
+volatile uint8_t I2CManagerClass::rxCount;
+volatile uint8_t I2CManagerClass::operation;
+volatile uint8_t I2CManagerClass::bytesToSend;
+volatile uint8_t I2CManagerClass::bytesToReceive;
+volatile unsigned long I2CManagerClass::startTime;
 unsigned long I2CManagerClass::timeout = 0;
 
 #endif

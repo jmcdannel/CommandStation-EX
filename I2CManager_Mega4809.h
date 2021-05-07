@@ -55,9 +55,12 @@ void I2CManagerClass::I2C_init()
   pinMode(PIN_WIRE_SCL, INPUT_PULLUP);
   PORTMUX.TWISPIROUTEA |= TWI_MUX;
 
-  I2C_setClock(I2C_FREQ);
-
+#if defined(I2C_USE_INTERRUPTS)
   TWI0.MCTRLA = TWI_RIEN_bm | TWI_WIEN_bm | TWI_ENABLE_bm;
+#else
+  TWI0.MCTRLA = TWI_ENABLE_bm;
+#endif
+  I2C_setClock(I2C_FREQ);
   TWI0.MSTATUS = TWI_BUSSTATE_IDLE_gc;
 }
 
@@ -65,7 +68,10 @@ void I2CManagerClass::I2C_init()
  *  Initiate a start bit for transmission, followed by address and R/W
  ***************************************************************************/
 void I2CManagerClass::I2C_sendStart() {
-  // If anything to send, send it first.
+  bytesToSend = currentRequest->writeLen;
+  bytesToReceive = currentRequest->readLen;
+
+  // If anything to send, initiate write.  Otherwise initiate read.
   if (operation == OPERATION_READ || (operation == OPERATION_REQUEST & !bytesToSend))
     TWI0.MADDR = (currentRequest->i2cAddress << 1) | 1;
   else
@@ -91,36 +97,38 @@ void I2CManagerClass::I2C_close() {
  ***************************************************************************/
 void I2CManagerClass::I2C_handleInterrupt() {
   
-  // if( (status == I2C_STATE_FREE) || (status == I2C_STATE_CLOSING ) ) 
-  //   return;
-      
   uint8_t currentStatus = TWI0.MSTATUS;
-  uint8_t currentStatus2 = currentStatus & (TWI_ARBLOST_bm | TWI_BUSERR_bm | TWI_WIF_bm | TWI_RIF_bm);
-  if (currentStatus2 == TWI_WIF_bm) {
-    // Master write completed without errors
+
+  if (currentStatus & TWI_ARBLOST_bm) {
+    // Arbitration lost, restart
+    TWI0.MSTATUS = currentStatus; // clear all flags
+    I2C_sendStart();   // Reinitiate request
+  } else if (currentStatus & TWI_BUSERR_bm) {
+    // Bus error
+    status = I2C_STATUS_BUS_ERROR;
+    TWI0.MSTATUS = currentStatus; // clear all flags
+  } else if (currentStatus & TWI_WIF_bm) {
+    // Master write completed
     if (currentStatus & TWI_RXACK_bm) {
       // Nacked, send stop.
       TWI0.MCTRLB = TWI_MCMD_STOP_gc;
       status = I2C_STATUS_NEGATIVE_ACKNOWLEDGE;
+    } else if (bytesToSend) {
+      // Acked, so send next byte
+      if (currentRequest->operation == OPERATION_SEND_P)
+        TWI0.MDATA = GETFLASH(currentRequest->writeBuffer + (txCount++));
+      else
+        TWI0.MDATA = currentRequest->writeBuffer[txCount++];
+      bytesToSend--;
+    } else if (bytesToReceive) {
+        // Last sent byte acked and no more to send.  Send repeated start, address and read bit.
+        TWI0.MADDR = (currentRequest->i2cAddress << 1) | 1;
     } else {
-      // Acked
-      if (bytesToSend) {
-        // Send next byte
-        if (currentRequest->operation == OPERATION_SEND_P)
-          TWI0.MDATA = GETFLASH(currentRequest->writeBuffer + (txCount++));
-        else
-          TWI0.MDATA = currentRequest->writeBuffer[txCount++];
-        bytesToSend--;
-      } else if (bytesToReceive) {
-          // Send repeated start, address and read bit.
-          TWI0.MADDR = (currentRequest->i2cAddress << 1) | 1;
-      } else {
-        // No more data to send/receive. Initiate a STOP condition.
-        TWI0.MCTRLB = TWI_MCMD_STOP_gc;
-        status = I2C_STATUS_OK;  // Done
-      }
+      // No more data to send/receive. Initiate a STOP condition.
+      TWI0.MCTRLB = TWI_MCMD_STOP_gc;
+      status = I2C_STATUS_OK;  // Done
     }
-  } else if (currentStatus2 & TWI_RIF_bm) {
+  } else if (currentStatus & TWI_RIF_bm) {
     // Master read completed without errors
     if (bytesToReceive) {
       currentRequest->readBuffer[rxCount++] = TWI0.MDATA;  // Store received byte
@@ -128,7 +136,6 @@ void I2CManagerClass::I2C_handleInterrupt() {
     } else { 
       // Buffer full, issue nack/stop
       TWI0.MCTRLB = TWI_ACKACT_bm | TWI_MCMD_STOP_gc;
-      bytesToReceive = 0;
       status = I2C_STATUS_OK;
     }
     if (bytesToReceive) {
@@ -139,15 +146,6 @@ void I2CManagerClass::I2C_handleInterrupt() {
       TWI0.MCTRLB = TWI_ACKACT_bm | TWI_MCMD_STOP_gc;
       status = I2C_STATUS_OK;
     }
-  } else if (currentStatus & TWI_ARBLOST_bm) {
-    status = I2C_STATUS_ARBITRATION_LOST;
-    TWI0.MSTATUS = currentStatus; // clear all flags
-  } else if (currentStatus & TWI_BUSERR_bm) {
-    status = I2C_STATUS_BUS_ERROR;
-    TWI0.MSTATUS = currentStatus; // clear all flags
-  } else {
-    // Unexpected state, finish.
-    status = I2C_STATUS_UNEXPECTED_ERROR;
   }
 }
 
