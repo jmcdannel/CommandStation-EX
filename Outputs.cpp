@@ -86,25 +86,39 @@ the state of any outputs being monitored or controlled by a separate interface o
 #include "StringFormatter.h"
 #include "IODevice.h"
 
+#define ISACTIVE(data)     bitRead(data.flags,7)
+#define INVERT(data)       bitRead(data.flags,0)
+#define USEDEFAULT(data)   bitRead(data.flags,1)
+#define DEFAULTVALUE(data) bitRead(data.flags,2)
+#define SETACTIVE(data, v) bitWrite(data.flags,7,v)
+
 ///////////////////////////////////////////////////////////////////////////////
 // Static function to print all output states to stream in the form "<Y id state>"
 
 void Output::printAll(Print *stream){
   for (Output *tt = Output::firstOutput; tt != NULL; tt = tt->nextOutput)
-    StringFormatter::send(stream, F("<Y %d %d>\n"), tt->data.id, tt->data.oStatus);
+    StringFormatter::send(stream, F("<Y %d %d>\n"), tt->data.id, ISACTIVE(tt->data));
 } // Output::printAll
 
 ///////////////////////////////////////////////////////////////////////////////
 // Object method to activate / deactivate the Output state.
 
 void  Output::activate(int s){
-  data.oStatus=(s>0);                                           // if s>0, set status to active, else inactive
+  s = (s>0);  // Make 0 or 1
+  SETACTIVE(data, s);                     // if s>0, set status to active, else inactive
   // set state of output pin to HIGH or LOW depending on whether bit zero of iFlag is set to 0 (ACTIVE=HIGH) or 1 (ACTIVE=LOW)
-  IODevice::write(data.pin,data.oStatus ^ bitRead(data.iFlag,0));  
+  IODevice::write(data.pin, s ^ INVERT(data));  
 
   // Update EEPROM if output has been stored.    
   if(EEStore::eeStore->data.nOutputs > 0 && num > 0)
-    EEPROM.put(num,data.oStatus);
+    EEPROM.put(num, data.flags);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Object method to check the Output state.
+
+bool Output::isActive() {
+  return ISACTIVE(data);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -147,11 +161,10 @@ void Output::load(){
 
   for(int i=0;i<EEStore::eeStore->data.nOutputs;i++){
     EEPROM.get(EEStore::pointer(),data);
-    tt=create(data.id,data.pin,data.iFlag);
-    // restore status to EEPROM value if bit 1 of iFlag=0, otherwise set to value of bit 2 of iFlag
-    tt->data.oStatus=bitRead(tt->data.iFlag,1)?bitRead(tt->data.iFlag,2):data.oStatus;      
-    IODevice::write(tt->data.pin,tt->data.oStatus ^ bitRead(tt->data.iFlag,0));
-    tt->num=EEStore::pointer() + offsetof(OutputData, oStatus); // Save pointer to status within EEPROM
+    // Create new object, set current state to default or to saved state from eeprom.
+    tt=create(data.id, data.pin, data.flags & 0x7, USEDEFAULT(data) ? DEFAULTVALUE(data) : ISACTIVE(data));
+
+    tt->num=EEStore::pointer() + offsetof(OutputData, flags); // Save pointer to flags within EEPROM
     EEStore::advance(sizeof(tt->data));
   }
 }
@@ -166,8 +179,8 @@ void Output::store(){
   EEStore::eeStore->data.nOutputs=0;
 
   while(tt!=NULL){
-    tt->num=EEStore::pointer();
     EEPROM.put(EEStore::pointer(),tt->data);
+    tt->num=EEStore::pointer() + offsetof(OutputData, flags); // Save pointer to flags within EEPROM
     EEStore::advance(sizeof(tt->data));
     tt=tt->nextOutput;
     EEStore::eeStore->data.nOutputs++;
@@ -181,7 +194,7 @@ void Output::store(){
 Output *Output::create(int id, VPIN pin, int iFlag, int v){
   Output *tt;
 
-  if (pin > 255) return NULL;
+  if (pin > VPIN_MAX) return NULL;
   
   if(firstOutput==NULL){
     firstOutput=(Output *)calloc(1,sizeof(Output));
@@ -198,14 +211,16 @@ Output *Output::create(int id, VPIN pin, int iFlag, int v){
   tt->num = 0; // make sure new object doesn't get written to EEPROM until store() command
   tt->data.id=id;
   tt->data.pin=pin;
-  tt->data.iFlag=iFlag;
-  tt->data.oStatus=0;
+  tt->data.flags=iFlag;
 
   if(v==1){
     // sets status to 0 (INACTIVE) is bit 1 of iFlag=0, otherwise set to value of bit 2 of iFlag
-    tt->data.oStatus=bitRead(tt->data.iFlag,1)?bitRead(tt->data.iFlag,2):0;      
-    IODevice::write(tt->data.pin,tt->data.oStatus ^ bitRead(tt->data.iFlag,0));
+    if (USEDEFAULT(tt->data)) 
+      SETACTIVE(tt->data, DEFAULTVALUE(tt->data));
+    else
+      SETACTIVE(tt->data, 0);
   }
+  IODevice::write(tt->data.pin, ISACTIVE(tt->data) ^ INVERT(tt->data));
 
   return(tt);
 }

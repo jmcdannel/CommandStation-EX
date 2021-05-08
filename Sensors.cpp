@@ -71,6 +71,10 @@ decide to ignore the <q ID> return and only react to <Q ID> triggers.
 #include "EEStore.h"
 #include "IODevice.h"
 
+#define isActive(data) bitRead(data->state,7)
+#define isInputSet(data) bitRead(data->state,6)
+#define setActive(data,v) bitWrite(data->state,7,v)
+#define setInputState(data,v) bitWrite(data->state,6,v)
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -99,8 +103,8 @@ void Sensor::checkAll(Print *stream){
   while (!suspend) {
     // Unpack the data from the sensor object
     VPIN pin = readingSensor->data.pin;
-    uint8_t active = (readingSensor->state >> 7) & 1;
-    uint8_t inputState = (readingSensor->state >> 6) & 1;
+    uint8_t active = isActive(readingSensor);
+    uint8_t inputState = isInputSet(readingSensor);
     uint8_t latchDelay = readingSensor->state & 0x3F;
 
     // Where the sensor is attached to a pin, read pin status and invert.  For sources such as LCN,
@@ -114,13 +118,13 @@ void Sensor::checkAll(Print *stream){
       latchDelay++;
     } else {
       // change validated, act on it.
-      active = inputState;
+      setActive(readingSensor, inputState);
       latchDelay = 0;
       
       if (stream != NULL) StringFormatter::send(stream, F("<%c %d>\n"), active ? 'Q' : 'q', readingSensor->data.snum);
     }
-    // Save back state
-    readingSensor->state = (active << 7) | (inputState << 6) | latchDelay;
+    // Save back latchDelay
+    readingSensor->state = (readingSensor->state & ~0x3F) | latchDelay;
 
     readingSensor=readingSensor->nextSensor;
     // Currently read only one sensor per entry.  Set flag conditionally if you want to
@@ -141,7 +145,7 @@ void Sensor::printAll(Print *stream){
     for(Sensor * tt=firstSensor;tt!=NULL;tt=tt->nextSensor){
       // JMRI currently seems not to accept sensor definitions with a <q> prefix, so split the definition and state notification
       StringFormatter::send(stream, F("<Q %d %d %d>\n"), tt->data.snum, tt->data.pin, 1 /*tt->data.pullUp*/); // definition
-      StringFormatter::send(stream, F("<%c %d>\n"), tt->state & 0x80 ? 'Q' : 'q', tt->data.snum); // current state
+      StringFormatter::send(stream, F("<%c %d>\n"), isActive(tt) ? 'Q' : 'q', tt->data.snum); // current state
     }
   } // loop over all sensors
 } // Sensor::printAll
@@ -185,8 +189,8 @@ Sensor *Sensor::create(int snum, VPIN pin, int pullUp){
 
 void Sensor::setState(int value) {
   // Trigger sensor change to be reported on next checkAll loop.
-  if (value) state |= 0x40; else state &= ~0x40;
-  state = (state & 0xC0) | (uint8_t)(minReadCount & 0x3f); // Don't wait for anti-jitter.
+  bitWrite(state, 7, value);
+  state = (state & ~0x3F) | (uint8_t)((minReadCount-1) & 0x3f); // Don't wait for anti-jitter.
 }
 
 ///////////////////////////////////////////////////////////////////////////////

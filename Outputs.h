@@ -23,15 +23,16 @@
 #include "IODevice.h"
 
 struct OutputData {
-  uint8_t oStatus;
+  uint8_t flags;  // Bit 7=output status, bits 0-2=input flags
+      // (Bit 0=Invert, Bit 1=Set state to default, Bit 2=default state)
   uint8_t id;
-  uint8_t pin; 
-  uint8_t iFlag; 
+  VPIN pin; 
 };
 
 class Output{
 public:
   void activate(int s);
+  bool isActive();
   static Output* get(int);
   static bool remove(int);
   static void load();
