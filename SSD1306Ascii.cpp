@@ -109,7 +109,7 @@ SSD1306AsciiWire::SSD1306AsciiWire(int width, int height) {
       // Device found
       DIAG(F("%dx%d OLED display configured on I2C:x%x"), width, height, address);
       if (width == 132)
-        begin(&SH1106_128x64, address);
+        begin(&SH1106_132x64, address);
       else if (height == 32)
         begin(&Adafruit128x32, address);
       else
@@ -260,7 +260,7 @@ const DevType FLASH SSD1306AsciiWire::Adafruit128x64 = {
 // This section is based on https://github.com/stanleyhuangyc/MultiLCD
 
 /** Initialization commands for a 128x64 SH1106 oled display. */
-const uint8_t FLASH SSD1306AsciiWire::SH1106_128x64init[] = {
+const uint8_t FLASH SSD1306AsciiWire::SH1106_132x64init[] = {
   0x00,                                  // Set to command mode
   SSD1306_DISPLAYOFF,
   SSD1306_SETSTARTPAGE | 0X0,            // set page address
@@ -277,13 +277,13 @@ const uint8_t FLASH SSD1306AsciiWire::SH1106_128x64init[] = {
   SSD1306_DISPLAYON
 };
 
-/** Initialize a 128x64 oled SH1106 display. */
-const DevType FLASH SSD1306AsciiWire::SH1106_128x64 =  {
-  SH1106_128x64init,
-  sizeof(SH1106_128x64init),
+/** Initialize a 132x64 oled SH1106 display. */
+const DevType FLASH SSD1306AsciiWire::SH1106_132x64 =  {
+  SH1106_132x64init,
+  sizeof(SH1106_132x64init),
   128,
   64,
-  2    // SH1106 is a 132x64 controller.  Use middle 128 columns.
+  0    // SH1106 is a 132x64 controller. Using the full width allows 22 full characters
 };
 
 

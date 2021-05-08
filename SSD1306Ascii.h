@@ -70,7 +70,7 @@ class SSD1306AsciiWire : public LCDDisplay {
   // Display characteristics / initialisation
   static const DevType FLASH Adafruit128x32;
   static const DevType FLASH Adafruit128x64;
-  static const DevType FLASH SH1106_128x64;
+  static const DevType FLASH SH1106_132x64;
 
   bool isBusy() { return requestBlock.isBusy(); }
 
@@ -104,7 +104,7 @@ class SSD1306AsciiWire : public LCDDisplay {
 
   static const uint8_t System5x7[];
   static const uint8_t FLASH Adafruit128xXXinit[];
-  static const uint8_t FLASH SH1106_128x64init[];
+  static const uint8_t FLASH SH1106_132x64init[];
 };
 
 #endif  // SSD1306Ascii_h

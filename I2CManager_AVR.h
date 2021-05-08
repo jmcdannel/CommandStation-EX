@@ -53,9 +53,9 @@
 #define TWI_TWBR  ((F_CPU / I2C_FREQ) - 16) / 2 // TWI Bit rate Register setting.
 
 #if defined(I2C_USE_INTERRUPTS)
-#define INT_ENA (1<<TWIE)
+#define ENABLE_TWI_INTERRUPT (1<<TWIE)
 #else
-#define INT_ENA 0
+#define ENABLE_TWI_INTERRUPT 0
 #endif
 
 /***************************************************************************
@@ -88,7 +88,7 @@ void I2CManagerClass::I2C_sendStart() {
   // We may have initiated a stop bit before this without waiting for it.
   // Wait for stop bit to be sent before sending start.
   while (TWCR & (1<<TWSTO)) {}
-  TWCR = (1<<TWEN)|INT_ENA|(1<<TWINT)|(1<<TWEA)|(1<<TWSTA);  // Send Start
+  TWCR = (1<<TWEN)|ENABLE_TWI_INTERRUPT|(1<<TWINT)|(1<<TWEA)|(1<<TWSTA);  // Send Start
 }
 
 /***************************************************************************
@@ -129,10 +129,10 @@ void I2CManagerClass::I2C_handleInterrupt() {
         else
           TWDR = currentRequest->writeBuffer[txCount++];
         bytesToSend--;
-        TWCR = (1<<TWEN)|INT_ENA|(1<<TWINT)|(1<<TWEA);
+        TWCR = (1<<TWEN)|ENABLE_TWI_INTERRUPT|(1<<TWINT)|(1<<TWEA);
       } else if (bytesToReceive) {  // All sent, anything to receive?
         while (TWCR & (1<<TWSTO)) {}    // Wait for stop to be sent
-        TWCR = (1<<TWEN)|INT_ENA|(1<<TWINT)|(1<<TWEA)|(1<<TWSTA);  // Send Start
+        TWCR = (1<<TWEN)|ENABLE_TWI_INTERRUPT|(1<<TWINT)|(1<<TWEA)|(1<<TWSTA);  // Send Start
       } else {  // Nothing left to send or receive
         TWDR = 0xff;  // Default condition = SDA released
         TWCR = (1<<TWEN)|(1<<TWINT)|(1<<TWEA)|(1<<TWSTO);  // Send Stop
@@ -147,10 +147,10 @@ void I2CManagerClass::I2C_handleInterrupt() {
       /* fallthrough */
     case TWI_MRX_ADR_ACK:      // SLA+R has been sent and ACK received
       if (bytesToReceive == 1) {
-        TWCR = (1<<TWEN)|INT_ENA|(1<<TWINT); // Send NACK after next reception
+        TWCR = (1<<TWEN)|ENABLE_TWI_INTERRUPT|(1<<TWINT); // Send NACK after next reception
       } else {
         // send ack
-        TWCR = (1<<TWEN)|INT_ENA|(1<<TWINT)|(1<<TWEA);
+        TWCR = (1<<TWEN)|ENABLE_TWI_INTERRUPT|(1<<TWINT)|(1<<TWEA);
       }
       break;
     case TWI_MRX_DATA_NACK:     // Data byte has been received and NACK transmitted
@@ -168,7 +168,7 @@ void I2CManagerClass::I2C_handleInterrupt() {
         TWDR = (currentRequest->i2cAddress << 1) | 1; // SLA+R
       else
         TWDR = (currentRequest->i2cAddress << 1) | 0; // SLA+W
-      TWCR = (1<<TWEN)|INT_ENA|(1<<TWINT)|(1<<TWEA);
+      TWCR = (1<<TWEN)|ENABLE_TWI_INTERRUPT|(1<<TWINT)|(1<<TWEA);
       break;
     case TWI_MTX_ADR_NACK:      // SLA+W has been transmitted and NACK received
     case TWI_MRX_ADR_NACK:      // SLA+R has been transmitted and NACK received
