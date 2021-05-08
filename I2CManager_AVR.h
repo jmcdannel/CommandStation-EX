@@ -111,7 +111,8 @@ void I2CManagerClass::I2C_close() {
 
 /***************************************************************************
  *  Main state machine for I2C, called from interrupt handler or,
- *  if I2C_USE_INTERRUPTS isn't defined, from the loop() function.
+ *  if I2C_USE_INTERRUPTS isn't defined, from the I2CManagerClass::loop() function
+ *  (and therefore, indirectly, from I2CRB::wait() and I2CRB::isBusy()).
  ***************************************************************************/
 void I2CManagerClass::I2C_handleInterrupt() {
   if (!(TWCR & (1<<TWINT))) return;  // Nothing to do.
@@ -194,4 +195,4 @@ ISR(TWI_vect) {
 }
 #endif
 
-#endif
+#endif /* I2CMANAGER_AVR_H */

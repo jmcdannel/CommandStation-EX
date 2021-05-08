@@ -111,7 +111,7 @@
  */
 
 //#define I2C_USE_WIRE
-//#define I2C_USE_INTERRUPTS
+#define I2C_USE_INTERRUPTS
 
 // Status codes for I2CRB structures.
 enum : uint8_t {

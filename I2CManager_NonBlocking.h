@@ -164,6 +164,8 @@ void I2CManagerClass::loop() {
 #if !defined(I2C_USE_INTERRUPTS)
   handleInterrupt();
 #endif
+  // If free, initiate next transaction
+  startTransaction();
   checkForTimeout();
 }
 
@@ -176,7 +178,7 @@ void I2CManagerClass::handleInterrupt() {
   I2C_handleInterrupt();
 
   // Experimental -- perform the post processing with interrupts enabled.
-  interrupts();
+  //interrupts();
 
   if (status!=I2C_STATUS_PENDING) {
     // Remove completed request from head of queue
