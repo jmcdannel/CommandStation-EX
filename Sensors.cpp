@@ -83,6 +83,7 @@ decide to ignore the <q ID> return and only react to <Q ID> triggers.
 ///////////////////////////////////////////////////////////////////////////////
 
 void Sensor::checkAll(Print *stream){
+  bool suspend = false;
 
   if (firstSensor == NULL) return;
   if (readingSensor == NULL) { 
@@ -95,25 +96,37 @@ void Sensor::checkAll(Print *stream){
   }
   if (!readingSensor) return;
 
-  VPIN pin = readingSensor->data.pin;
-  // Where the sensor is attached to a pin, read pin status and invert.  For sources such as LCN,
-  // which don't have an input pin to read, the source calls setState() to update inputState.
-  if (pin!=VPIN_NONE) readingSensor->inputState = !IODevice::read(pin);
+  while (!suspend) {
+    // Unpack the data from the sensor object
+    VPIN pin = readingSensor->data.pin;
+    uint8_t active = (readingSensor->state >> 7) & 1;
+    uint8_t inputState = (readingSensor->state >> 6) & 1;
+    uint8_t latchDelay = readingSensor->state & 0x3F;
 
-  if (readingSensor->inputState == readingSensor->active) {
-    // no change
-    readingSensor->latchdelay=0; // reset
-  } else if (readingSensor->latchdelay < minReadCount-1) { // byte, max 255, good value unknown yet
-    // change detected, but first increase anti-jitter counter
-    readingSensor->latchdelay++;
-  } else {
-    // change validated, act on it.
-    readingSensor->active = readingSensor->inputState;
-    readingSensor->latchdelay=0; // reset for next time
-    if (stream != NULL) StringFormatter::send(stream, F("<%c %d>\n"), readingSensor->active ? 'Q' : 'q', readingSensor->data.snum);
+    // Where the sensor is attached to a pin, read pin status and invert.  For sources such as LCN,
+    // which don't have an input pin to read, the source calls setState() to update inputState.
+    if (pin!=VPIN_NONE) inputState = !IODevice::read(pin);
+    if (inputState == active) {
+      // no change
+      latchDelay = 0;
+    } else if (latchDelay < minReadCount-1) { // 6 bits, max 63, good value unknown yet
+      // change detected, but first increase anti-jitter counter
+      latchDelay++;
+    } else {
+      // change validated, act on it.
+      active = inputState;
+      latchDelay = 0;
+      
+      if (stream != NULL) StringFormatter::send(stream, F("<%c %d>\n"), active ? 'Q' : 'q', readingSensor->data.snum);
+    }
+    // Save back state
+    readingSensor->state = (active << 7) | (inputState << 6) | latchDelay;
+
+    readingSensor=readingSensor->nextSensor;
+    // Currently read only one sensor per entry.  Set flag conditionally if you want to
+    //  read all sensors, or some sensors per entry.
+    suspend = true;
   }
-
-  readingSensor=readingSensor->nextSensor;
 } // Sensor::checkAll
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -127,8 +140,8 @@ void Sensor::printAll(Print *stream){
   if (stream != NULL) {
     for(Sensor * tt=firstSensor;tt!=NULL;tt=tt->nextSensor){
       // JMRI currently seems not to accept sensor definitions with a <q> prefix, so split the definition and state notification
-      StringFormatter::send(stream, F("<Q %d %d %d>\n"), tt->data.snum, tt->data.pin, tt->data.pullUp); // definition
-      StringFormatter::send(stream, F("<%c %d>\n"), tt->active ? 'Q' : 'q', tt->data.snum); // current state
+      StringFormatter::send(stream, F("<Q %d %d %d>\n"), tt->data.snum, tt->data.pin, 1 /*tt->data.pullUp*/); // definition
+      StringFormatter::send(stream, F("<%c %d>\n"), tt->state & 0x80 ? 'Q' : 'q', tt->data.snum); // current state
     }
   } // loop over all sensors
 } // Sensor::printAll
@@ -139,7 +152,7 @@ void Sensor::printAll(Print *stream){
 Sensor *Sensor::create(int snum, VPIN pin, int pullUp){
   Sensor *tt;
 
-  if (pin > 255) return NULL;
+  if (pin > VPIN_MAX) return NULL;
 
   if(firstSensor==NULL){
     firstSensor=(Sensor *)calloc(1,sizeof(Sensor));
@@ -156,9 +169,8 @@ Sensor *Sensor::create(int snum, VPIN pin, int pullUp){
 
   tt->data.snum=snum;
   tt->data.pin=pin;
-  tt->data.pullUp=(pullUp==0?LOW:HIGH);
-  tt->active=false;
-  tt->latchdelay=0;
+  //tt->data.pullUp=(pullUp==0?LOW:HIGH);
+  tt->state=0;
   if (pin != VPIN_NONE) IODevice::configurePullup(pin, pullUp);   
     // Generally, internal pull-up resistors are not, on their own, sufficient 
     // for external infrared sensors --- each sensor must have its own 1K external pull-up resistor
@@ -173,8 +185,8 @@ Sensor *Sensor::create(int snum, VPIN pin, int pullUp){
 
 void Sensor::setState(int value) {
   // Trigger sensor change to be reported on next checkAll loop.
-  inputState = value;
-  latchdelay = minReadCount; // Don't wait for anti-jitter.
+  if (value) state |= 0x40; else state &= ~0x40;
+  state = (state & 0xC0) | (uint8_t)(minReadCount & 0x3f); // Don't wait for anti-jitter.
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -216,7 +228,7 @@ void Sensor::load(){
 
   for(int i=0;i<EEStore::eeStore->data.nSensors;i++){
     EEPROM.get(EEStore::pointer(),data);
-    tt=create(data.snum,data.pin,data.pullUp);
+    tt=create(data.snum,data.pin,1/*data.pullUp*/);
     EEStore::advance(sizeof(tt->data));
   }
 }

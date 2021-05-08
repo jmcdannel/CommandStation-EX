@@ -24,17 +24,15 @@
 
 struct SensorData {
   int snum;
-  uint8_t pin;
-  uint8_t pullUp;
+  VPIN pin;
+//  uint8_t pullUp;
 };
 
 struct Sensor{
   static Sensor *firstSensor;
   static Sensor *readingSensor;
   SensorData data;
-  boolean active;
-  boolean inputState;
-  byte latchdelay;
+  uint8_t state;  // bit 7=active; bit 6=input state; bits 5-0=latchDelay
   Sensor *nextSensor;
   void setState(int state);
   static void load();
@@ -49,6 +47,7 @@ struct Sensor{
                                                   // should not be less than device scan cycle time.
   static const unsigned int minReadCount = 2; // number of consecutive reads before acting on change
                                         // E.g. 2 x 5000 means debounce time of 10ms
+                                        // Max value is 64
 }; // Sensor
 
 #endif
