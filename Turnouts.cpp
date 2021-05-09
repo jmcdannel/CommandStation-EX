@@ -43,7 +43,7 @@ enum unit8_t {
 
 void Turnout::printAll(Print *stream){
   for (Turnout *tt = Turnout::firstTurnout; tt != NULL; tt = tt->nextTurnout)
-    StringFormatter::send(stream, F("<H %d %d>\n"), tt->data.header.id, (tt->data.header.tStatus & STATUS_ACTIVE)!=0);
+    StringFormatter::send(stream, F("<H %d %d>\n"), tt->data.header.id, (tt->data.header.active)!=0);
 } // Turnout::printAll
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -54,8 +54,8 @@ void Turnout::printAll(Print *stream){
 //  <H id DCC address subAddress state>
 
 void Turnout::print(Print *stream){
-  uint8_t state = ((data.header.tStatus & STATUS_ACTIVE) != 0);
-  uint8_t type = data.header.tStatus & STATUS_TYPE;
+  uint8_t state = ((data.header.active) != 0);
+  uint8_t type = data.header.type;
   switch (type) {
     case TURNOUT_SERVO:
       // Servo Turnout
@@ -110,7 +110,7 @@ bool Turnout::isActive(int n){
 // Object function to check the status of Turnout is activated or not.
 
 bool Turnout::isActive() {
-  return (data.header.tStatus & STATUS_ACTIVE) != 0;
+  return data.header.active;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -118,10 +118,7 @@ bool Turnout::isActive() {
 // Does not send any commands, only modifies the tStatus flag.
 
 void Turnout::setActive(bool value) {
-  if (value) 
-    data.header.tStatus |= STATUS_ACTIVE;
-  else
-    data.header.tStatus &= ~STATUS_ACTIVE;
+  data.header.active = (value != 0);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -132,17 +129,13 @@ void Turnout::activate(bool state) {
 #ifdef EESTOREDEBUG
   DIAG(F("Turnout::activate(%d)"),state);
 #endif
-  uint8_t type = data.header.tStatus & 0x7f;
-  if (type == TURNOUT_LCN) {
+  if (data.header.type == TURNOUT_LCN) {
       // A LCN turnout is transmitted to the LCN master.
       LCN::send('T', data.header.id, state);
       return;   // The tStatus will be updated by a message from the LCN master, later.
   } else {
-    if (state)
-      data.header.tStatus|=STATUS_ACTIVE;
-    else
-      data.header.tStatus &= ~STATUS_ACTIVE;
-    switch (type) {
+    data.header.active = state;
+    switch (data.header.type) {
       case TURNOUT_SERVO:
         IODevice::write(data.servoData.vpin, state);
         break;
@@ -204,30 +197,28 @@ void Turnout::load(){
     EEPROM.get(EEStore::pointer(), data.header);
     EEStore::advance(sizeof(data.header));
     
-    int initialState = (data.header.tStatus & STATUS_ACTIVE) != 0;
-    uint8_t type = data.header.tStatus & STATUS_TYPE;
-
-    switch (type) {
+    int lastKnownState = data.header.active;
+    switch (data.header.type) {
       case TURNOUT_SERVO:
         EEPROM.get(EEStore::pointer(), data.servoData);
         EEStore::advance(sizeof(data.servoData));
         tt=createServo(data.header.id, data.servoData.vpin, 
-          data.servoData.activePosition, data.servoData.inactivePosition, data.servoData.profile, initialState);
+          data.servoData.activePosition, data.servoData.inactivePosition, data.servoData.profile, lastKnownState);
         break;
       case TURNOUT_VPIN:
         EEPROM.get(EEStore::pointer(), data.vpinData);
         EEStore::advance(sizeof(data.vpinData));
-        tt=createVpin(data.header.id, data.vpinData.vpin, initialState);  // VPIN-based turnout
+        tt=createVpin(data.header.id, data.vpinData.vpin, lastKnownState);  // VPIN-based turnout
         break;
       case TURNOUT_DCC:
         EEPROM.get(EEStore::pointer(), data.dccAccessoryData);
         EEStore::advance(sizeof(data.dccAccessoryData));
-        tt=createDCC(data.header.id, data.dccAccessoryData.address, initialState); // DCC-based turnout
+        tt=createDCC(data.header.id, data.dccAccessoryData.address, lastKnownState); // DCC-based turnout
         break;
       case TURNOUT_LCN:
         EEPROM.get(EEStore::pointer(), data.lcnData);
         EEStore::advance(sizeof(data.lcnData));
-        tt=createLCN(data.header.id, initialState);
+        tt=createLCN(data.header.id, lastKnownState);
         break;
     }
     tt->num = tStatusPointer;  // Save pointer to tStatus byte within EEPROM
@@ -284,9 +275,9 @@ void Turnout::store(){
 Turnout *Turnout::createVpin(int id, VPIN vpin, uint8_t state){
   if (vpin > VPIN_MAX) return NULL;
   Turnout *tt=create(id);
-  tt->data.header.tStatus = TURNOUT_VPIN;;
+  tt->data.header.type = TURNOUT_VPIN;;
+  tt->data.header.active = (state != 0);
   tt->data.vpinData.vpin = vpin;
-  if (state) tt->data.header.tStatus |= STATUS_ACTIVE;
   IODevice::write(vpin, state);   // Set initial state of output.
   return(tt);
 }
@@ -297,7 +288,8 @@ Turnout *Turnout::createVpin(int id, VPIN vpin, uint8_t state){
 Turnout *Turnout::createDCC(int id, uint16_t add, uint8_t subAdd, uint8_t state){
   if (add > 511 || subAdd > 3) return NULL;
   Turnout *tt=create(id);
-  tt->data.header.tStatus = TURNOUT_DCC | (state ? STATUS_ACTIVE : 0);
+  tt->data.header.type = TURNOUT_DCC;
+  tt->data.header.active = (state != 0);
   tt->data.dccAccessoryData.address = add << 2 | subAdd;
   DCC::setAccessory(add, subAdd, state);    // Transmit initial state
   return(tt);
@@ -308,21 +300,25 @@ Turnout *Turnout::createDCC(int id, uint16_t add, uint8_t subAdd, uint8_t state)
 
 Turnout *Turnout::createLCN(int id, uint8_t state) {
   Turnout *tt=create(id);
-  tt->data.header.tStatus = TURNOUT_LCN | (state ? STATUS_ACTIVE : 0);
+  tt->data.header.type = TURNOUT_LCN;
+  tt->data.header.active = (state != 0);
   return(tt);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // Method for creating a PCA9685 PWM Turnout.  
 
-Turnout *Turnout::createServo(int id, VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t initialState){
+Turnout *Turnout::createServo(int id, VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t state){
   if (activePosition > 511 || inactivePosition > 511 || profile > 4) return NULL;
   // Configure PWM interface device
-  int deviceParams[] = {(int)activePosition, (int)inactivePosition, profile, initialState};
-  if (!IODevice::configure(vpin, sizeof(deviceParams)/sizeof(deviceParams[0]), deviceParams)) return NULL;
+  int deviceParams[] = {(int)activePosition, (int)inactivePosition, profile, state};
+  if (!IODevice::configure(vpin, IODevice::CONFIGURE_SERVO, 
+            sizeof(deviceParams)/sizeof(deviceParams[0]), deviceParams)) 
+    return NULL;
 
   Turnout *tt=create(id);
-  tt->data.header.tStatus = TURNOUT_SERVO | (initialState ? STATUS_ACTIVE : 0);
+  tt->data.header.type = TURNOUT_SERVO;
+  tt->data.header.active = (state != 0);
   tt->data.servoData.vpin = vpin;
   tt->data.servoData.activePosition = activePosition;
   tt->data.servoData.inactivePosition = inactivePosition;

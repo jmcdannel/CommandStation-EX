@@ -596,7 +596,7 @@ bool DCCEXParser::parseZ(Print *stream, int16_t params, int16_t p[])
         for (Output *tt = Output::firstOutput; tt != NULL; tt = tt->nextOutput)
         {
             gotone = true;
-            StringFormatter::send(stream, F("<Y %d %d %d %d>\n"), tt->data.id, tt->data.pin, tt->data.flags & 0x7, tt->isActive());
+            StringFormatter::send(stream, F("<Y %d %d %d %d>\n"), tt->data.id, tt->data.pin, tt->data.flags, tt->data.active);
         }
         return gotone;
     }

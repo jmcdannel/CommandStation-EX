@@ -34,30 +34,22 @@ static const float FREQUENCY_OSCILLATOR=25000000.0; /** Accurate enough for our 
 static const uint8_t PRESCALE_50HZ = (uint8_t)(((FREQUENCY_OSCILLATOR / (50.0 * 4096.0)) + 0.5) - 1);
 static const uint32_t MAX_I2C_SPEED = 1000000L; // PCA9685 rated up to 1MHz I2C clock speed
 
+// Predeclare helper function
+static void writeRegister(byte address, byte reg, byte value);
+
 // Create device driver.  This function assumes that one or more PCA9685s will be installed on 
 // successive I2C addresses with a contiguous range of VPINs.  For example, the first PCA9685 may
 // be at address 0x40 and allocated pins 100-115.  In this case, pins 116-131 would be on another
 // PCA9685 on address 0x41, pins 132-147 on address 0x42, and pins 148-163 on address 0x43.  
 //
-void PCA9685::create(VPIN vpin, int nPins, uint8_t I2CAddress) {
-  createInstance(vpin, nPins, I2CAddress);
-}
-
-IODevice *PCA9685::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
-  #ifdef DIAG_IO
-  DIAG(F("PCA9685 created Vpins:%d-%d"), vpin, vpin+nPins-1);
-  #endif
-  PCA9685 *dev = new PCA9685();
-  dev->_firstVpin = vpin;
-  dev->_nPins = min(nPins, 8*8);
-  dev->_nModules = (nPins + 15) / 16;
-  dev->_I2CAddress = I2CAddress;
+void PCA9685::create(VPIN firstVpin, int nPins, uint8_t I2CAddress) {
+  PCA9685 *dev = new PCA9685(firstVpin, nPins, I2CAddress);
   addDevice(dev);
-  return dev;
 }
 
 // Configure a port on the PCA9685.  This uses the Analogue class
-bool PCA9685::_configure(VPIN vpin, int paramCount, int params[]) {
+bool PCA9685::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) {
+  if (configType != CONFIGURE_SERVO) return false;
   if (paramCount != 4) return false;
   int activePosition = params[0];
   int inactivePosition = params[1];
@@ -68,29 +60,31 @@ bool PCA9685::_configure(VPIN vpin, int paramCount, int params[]) {
 }
 
 // Constructor
-PCA9685::PCA9685() {}
+PCA9685::PCA9685(VPIN firstVpin, int nPins, uint8_t I2CAddress) {
+  _firstVpin = firstVpin;
+  _nPins = min(nPins, 16);
+  _I2CAddress = I2CAddress;
 
-// Device-specific initialisation
-void PCA9685::_begin() {
   // Initialise structure used for setting pulse rate
-  requestBlock.setWriteParams(0, outputBuffer, sizeof(outputBuffer));
+  requestBlock.setWriteParams(_I2CAddress, outputBuffer, sizeof(outputBuffer));
   I2CManager.begin();
   I2CManager.setClock(1000000); // Nominally able to run up to 1MHz on I2C
           // In reality, other devices including the Arduino will limit 
           // the clock speed to a lower rate.
 
   // Initialise I/O module(s) here.
-  for (byte module=0; module < _nPins/16; module++) {
-    uint8_t address = _I2CAddress + module;
-    if (I2CManager.exists(address))
-      DIAG(F("PCA9685 configured on I2C:x%x"), (int)address);
-    writeRegister(address, PCA9685_MODE1, MODE1_SLEEP | MODE1_AI);    
-    writeRegister(address, PCA9685_PRESCALE, PRESCALE_50HZ);   // 50Hz clock, 20ms pulse period.
-    writeRegister(address, PCA9685_MODE1, MODE1_AI);
-    writeRegister(address, PCA9685_MODE1, MODE1_RESTART | MODE1_AI);
+    if (I2CManager.exists(_I2CAddress))
+      DIAG(F("PCA9685 configured Vpins:%d-%d I2C:%x"), _firstVpin, _firstVpin+_nPins-1, _I2CAddress);
+    writeRegister(_I2CAddress, PCA9685_MODE1, MODE1_SLEEP | MODE1_AI);    
+    writeRegister(_I2CAddress, PCA9685_PRESCALE, PRESCALE_50HZ);   // 50Hz clock, 20ms pulse period.
+    writeRegister(_I2CAddress, PCA9685_MODE1, MODE1_AI);
+    writeRegister(_I2CAddress, PCA9685_MODE1, MODE1_RESTART | MODE1_AI);
     // In theory, we should wait 500us before sending any other commands to each device, to allow
     // the PWM oscillator to get running.  However, we don't.    
-  }
+}
+
+// Device-specific initialisation
+void PCA9685::_begin() {
 }
 
 // Device-specific write function.  This device is PWM, and the value written
@@ -98,15 +92,12 @@ void PCA9685::_begin() {
 // ratio.
 void PCA9685::_write(VPIN vpin, int value) {
   int pin = vpin-_firstVpin;
-  uint16_t address = _I2CAddress + pin/16;
-  pin %= 16;
   #ifdef DIAG_IO
-  DIAG(F("PCA9685 Write Vpin:%d I2C:x%x/%d Value:%d"), (int)vpin, (int)address, pin, value);
+  DIAG(F("PCA9685 Write Vpin:%d I2C:x%x/%d Value:%d"), (int)vpin, (int)_I2CAddress, pin, value);
   #endif
   // Wait for previous request to complete
   requestBlock.wait();
   // Set up new request.
-  requestBlock.i2cAddress = address;
   outputBuffer[0] = PCA9685_FIRST_SERVO + 4 * pin;
   outputBuffer[1] = 0;
   outputBuffer[2] = (value == 4095 ? 0x10 : 0);  // 4095=full on
@@ -117,13 +108,11 @@ void PCA9685::_write(VPIN vpin, int value) {
 
 // Display details of this device.
 void PCA9685::_display() {
-  for (int i=0; i<_nModules; i++) {
-    DIAG(F("PCA9685 Vpins:%d-%d I2C:x%x"), (int)_firstVpin+i*16, 
-      (int)min(_firstVpin+i*16+15,_firstVpin+_nPins-1), (int)(_I2CAddress+i));
-  }
+  DIAG(F("PCA9685 Vpins:%d-%d I2C:x%x"), (int)_firstVpin, 
+    (int)_firstVpin+_nPins-1, (int)_I2CAddress);
 }
 
 // Internal helper function for this device
-void PCA9685::writeRegister(byte address, byte reg, byte value) {
+static void writeRegister(byte address, byte reg, byte value) {
   I2CManager.write(address, 2, reg, value);
 }

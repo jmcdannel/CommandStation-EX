@@ -39,7 +39,13 @@ const byte STATUS_TYPE = 0x7f;  // Mask for turnout type in tStatus field
 struct TurnoutData {
   struct {
     int id;
-    uint8_t tStatus; // has STATUS_ACTIVE, STATUS_TYPE
+    union {
+      uint8_t tStatus;
+      struct {
+        unsigned int active: 1;
+        unsigned int type: 5;
+      };
+    };
   } header;
   union {
     struct {

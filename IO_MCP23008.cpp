@@ -24,81 +24,67 @@
 // Define symbol to enable MCP23008 input port value caching (reduce I2C traffic).
 #define MCP23008_OPTIMISE
 
+
+// Predeclare helper functions
+static void writeRegister(uint8_t I2CAddress, uint8_t reg, uint8_t value) ;
+static uint8_t readRegister(uint8_t I2CAddress, uint8_t reg);
+
 // Constructor
-MCP23008::MCP23008() {}
+MCP23008::MCP23008(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin) {
+  _firstVpin = vpin;
+  _nPins = min(nPins, 8);
+  _I2CAddress = I2CAddress;
+  _gpioInterruptPin = interruptPin;
 
-IODevice *MCP23008::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin) {
-  #ifdef DIAG_IO
-  DIAG(F("MCP23008 created Vpins:%d-%d I2C:%x"), vpin, vpin+nPins-1, I2CAddress);
-  #endif
-  MCP23008 *dev = new MCP23008();
-  dev->_firstVpin = vpin;
-  dev->_nPins = min(nPins, 8*8);
-  uint8_t nModules = (dev->_nPins + 7) / 8; // Number of modules in use.
-  dev->_nModules = nModules;
-  dev->_I2CAddress = I2CAddress;
-  dev->_gpioInterruptPin = interruptPin;
-  // Allocate memory for module state
-  uint8_t *blockStart = (uint8_t *)calloc(4, nModules);
-  dev->_portDirection = blockStart;
-  dev->_portPullup = blockStart + nModules;
-  dev->_portInputState = blockStart + 2*nModules;
-  dev->_portOutputState = blockStart + 3*nModules;
-  addDevice(dev);
-  return dev;
-}
-
-// Parameters: firstVPIN, nPins
-// We allow up to 8 devices, on successive I2C addresses starting 
-// with the specified one.  VPINS are allocated contiguously, 8 
-// per device.
-void MCP23008::create(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin) {
-  createInstance(vpin, nPins, I2CAddress, interruptPin);
-}
-
-// Device-specific initialisation
-void MCP23008::_begin() {  // Configure pin used for GPIO extender notification of change.
+ // Configure pin used for GPIO extender notification of change.
   if (_gpioInterruptPin >= 0)
     pinMode(_gpioInterruptPin, INPUT_PULLUP);
 
-
   // Initialise structure for reading GPIO ports
-  requestBlock.setRequestParams(0, inputBuffer, sizeof(inputBuffer), outputBuffer, sizeof(outputBuffer));
+  requestBlock.setRequestParams(I2CAddress, inputBuffer, sizeof(inputBuffer), outputBuffer, sizeof(outputBuffer));
   inputBuffer[0] = REG_GPIO;
 
   I2CManager.begin();
   I2CManager.setClock(1000000);  // Supports fast clock
-  for (int i=0; i<_nModules; i++) {
-    if (I2CManager.exists(_I2CAddress+i))
-      DIAG(F("MCP23008 configured on I2C:x%x"), (int)_I2CAddress+i);
-    _portDirection[i] = 0xff; // Defaults to Input mode
-    _portPullup[i] = 0xff; // Defaults to pullup enabled
-    _portInputState[i] = 0x00; 
-    _portOutputState[i] = 0x00; // Defaults to output zero.
-    // Initialise device (in case it's warm-starting)
-    I2CManager.write(_I2CAddress+i, 2, REG_GPIO, _portOutputState[i]);
-    I2CManager.write(_I2CAddress+i, 2, REG_IODIR, _portDirection[i]);
-    I2CManager.write(_I2CAddress+i, 2, REG_GPPU, _portPullup[i]);
-  }
+  if (I2CManager.exists(_I2CAddress))
+    DIAG(F("MCP23008 configured Vpins:%d-%d I2C:%x"), _firstVpin, _firstVpin+_nPins-1, _I2CAddress);
+  _portDirection = 0xff; // Defaults to Input mode
+  _portPullup = 0xff; // Defaults to pullup enabled
+  _portInputState = 0x00; 
+  _portOutputState = 0x00; // Defaults to output zero.
+  // Initialise device (in case it's warm-starting)
+  I2CManager.write(_I2CAddress, 2, REG_GPIO, _portOutputState);
+  I2CManager.write(_I2CAddress, 2, REG_IODIR, _portDirection);
+  I2CManager.write(_I2CAddress, 2, REG_GPPU, _portPullup);
+}
+
+// Static create function
+void MCP23008::create(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin) {
+  MCP23008 *dev = new MCP23008(vpin, nPins, I2CAddress, interruptPin);
+  addDevice(dev);
+}
+
+// Device-specific initialisation
+void MCP23008::_begin() { 
 }
 
 // Device-specific pin configuration
-bool MCP23008::_configurePullup(VPIN vpin, bool pullup) {
+bool MCP23008::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) {
+  if (configType != CONFIGURE_INPUT) return false;
+  if (paramCount != 1) return false;
+  bool pullup = params[0];
   int pin = vpin - _firstVpin;
   #ifdef DIAG_IO
   DIAG(F("MCP23008 _configurePullup Pin:%d Val:%d"), vpin, pullup);
   #endif
-  int deviceIndex = pin/8;
-  pin %= 8; // Pin within device
-  uint8_t address = _I2CAddress+deviceIndex;
   uint8_t mask = 1 << pin;
   if (pullup) 
-    _portPullup[deviceIndex] |= mask;
+    _portPullup |= mask;
   else
-    _portPullup[deviceIndex] &= ~mask;
-  I2CManager.write(address, 2, REG_GPPU, _portPullup[deviceIndex]);  
+    _portPullup &= ~mask;
+  I2CManager.write(_I2CAddress, 2, REG_GPPU, _portPullup);  
   // Read GPIO register (synchronous)
-  _portInputState[deviceIndex] = readRegister(address, REG_GPIO);
+  _portInputState = readRegister(_I2CAddress, REG_GPIO);
    return true;
 }
 
@@ -106,26 +92,24 @@ bool MCP23008::_configurePullup(VPIN vpin, bool pullup) {
 // Device-specific write function.
 void MCP23008::_write(VPIN vpin, int value) {
   int pin = vpin -_firstVpin;
-  int deviceIndex = pin / 8;
-  pin %= 8; // Pin within device
   #ifdef DIAG_IO
-  DIAG(F("MCP23008 Write I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress+deviceIndex, (int)vpin, value);
+  DIAG(F("MCP23008 Write I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress, (int)vpin, value);
   #endif
   uint8_t mask = 1 << pin;
   if (value) 
-    _portOutputState[deviceIndex] |= mask;
+    _portOutputState |= mask;
   else
-    _portOutputState[deviceIndex] &= ~mask;
-  writeRegister(_I2CAddress+deviceIndex, REG_GPIO, _portOutputState[deviceIndex]);
+    _portOutputState &= ~mask;
+  writeRegister(_I2CAddress, REG_GPIO, _portOutputState);
   // Check port mode
-  if (_portDirection[deviceIndex] & mask) {
+  if (_portDirection & mask) {
     // Currently in read mode, so set to write mode
-    _portDirection[deviceIndex] &= ~mask;
-    writeRegister(_I2CAddress+deviceIndex, REG_IODIR, _portDirection[deviceIndex]);
+    _portDirection &= ~mask;
+    writeRegister(_I2CAddress, REG_IODIR, _portDirection);
   }
   // Assume that writing to the port invalidates any cached read, so set the port counter to 0
   //  to force the port to be refreshed next time a read is issued.
-  _portCounter[deviceIndex] = 0;
+  _portCounter = 0;
 }
 
 // Device-specific read function.  If port was in write mode, then set to read mode and 
@@ -134,22 +118,20 @@ void MCP23008::_write(VPIN vpin, int value) {
 int MCP23008::_read(VPIN vpin) {
   int result;
   int pin = vpin-_firstVpin;
-  int deviceIndex = pin / 8;  
-  pin %= 8;
   uint8_t mask = 1 << pin;
-  if (!(_portDirection[deviceIndex] & mask)) {
+  if (!(_portDirection & mask)) {
     // Pin currently in write mode, so set to read mode
-    _portDirection[deviceIndex] |= mask;
-    writeRegister(_I2CAddress+deviceIndex, REG_IODIR, _portDirection[deviceIndex]);
+    _portDirection |= mask;
+    writeRegister(_I2CAddress, REG_IODIR, _portDirection);
     // Read GPIO register
-    _portInputState[deviceIndex] = readRegister(_I2CAddress+deviceIndex, REG_GPIO);
+    _portInputState = readRegister(_I2CAddress, REG_GPIO);
   }
-  if (_portInputState[deviceIndex] & mask) 
+  if (_portInputState & mask) 
     result = 1;
   else
     result = 0;
   #ifdef DIAG_IO
-  //DIAG(F("MCP23008 Read I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress+deviceIndex, (int)pin, result);
+  //DIAG(F("MCP23008 Read I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress, (int)pin, result);
   #endif
   return result;
 }
@@ -159,42 +141,37 @@ int MCP23008::_read(VPIN vpin) {
 // and will need re-reading.
 void MCP23008::_loop(unsigned long currentMicros) {
   if (requestBlock.isBusy()) return;  // Do nothing if a port read is in progress
-  if (currentPollDevice >= 0) {
+  if (scanActive) {
     // Scan in progress and last request completed, so retrieve port status from buffer
     if (requestBlock.status == I2C_STATUS_OK) 
-      _portInputState[currentPollDevice] = inputBuffer[0];
+      _portInputState = inputBuffer[0];
     else
-      _portInputState[currentPollDevice] = 0xff;
-    if (++currentPollDevice >= _nModules)
-      currentPollDevice = -1;  // Scan completed
+      _portInputState = 0xff;
+    scanActive = false;
   } else if (currentMicros - _lastLoopEntry > _portTickTime) {
     if (_gpioInterruptPin < 0 || digitalRead(_gpioInterruptPin) == 0) {
       // A cyclic scan is due, and either a GPIO device has pulled down its interrupt pin to
       //  signal something has changed or GPIO device interrupts are not configured
-      currentPollDevice = 0;  // Starting new scan.
+      scanActive = true;
+      // Initiate read of module input register
+      I2CManager.queueRequest(&requestBlock);
     }
     _lastLoopEntry = currentMicros;
   }
-
-  // Initiate read of next module
-  requestBlock.i2cAddress = _I2CAddress+currentPollDevice;
-  I2CManager.queueRequest(&requestBlock);
 }
 
 void MCP23008::_display() {
-  for (int i=0; i<_nModules; i++) {
-    DIAG(F("MCP23008 Vpins:%d-%d I2C:x%x"), (int)_firstVpin+i*8, 
-      (int)min(_firstVpin+i*8+7,_firstVpin+_nPins-1), (int)(_I2CAddress+i));
-  }
+  DIAG(F("MCP23008 Vpins:%d-%d I2C:x%x"), (int)_firstVpin, 
+    (int)_firstVpin+_nPins-1, (int)_I2CAddress);
 }
 
 // Helper function to write a register
-void MCP23008::writeRegister(uint8_t I2CAddress, uint8_t reg, uint8_t value) {
+static void writeRegister(uint8_t I2CAddress, uint8_t reg, uint8_t value) {
   I2CManager.write(I2CAddress, 2, reg, value);
 }
 
 // Helper function to read a register.  Returns zero if error.
-uint8_t MCP23008::readRegister(uint8_t I2CAddress, uint8_t reg) {
+static uint8_t readRegister(uint8_t I2CAddress, uint8_t reg) {
   uint8_t buffer;
   uint8_t status = I2CManager.read(I2CAddress, &buffer, 1, &reg, 1);
   if (status == I2C_STATUS_OK) 

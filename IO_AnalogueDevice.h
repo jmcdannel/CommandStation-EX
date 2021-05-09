@@ -55,7 +55,7 @@ public:
 
   void _loop(unsigned long currentMicros);
   void _write(VPIN vpin, int value);
-  bool _configure(VPIN vpin, int paramCount, int params[]);
+  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]);
   void _configure(VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile);
   void _display();
   bool _isDeletable();

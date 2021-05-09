@@ -25,101 +25,76 @@
 #define PCF8574_OPTIMISE
 
 // Constructor
-PCF8574::PCF8574() {}
+PCF8574::PCF8574(VPIN vpin, int nPins, uint8_t I2CAddress) {
+  _firstVpin = vpin;
+  _nPins = min(nPins, 8);
+  _I2CAddress = I2CAddress;
 
-IODevice *PCF8574::createInstance(VPIN vpin, int nPins, uint8_t I2CAddress) {
-  #ifdef DIAG_IO
-  DIAG(F("PCF8574 created Vpins:%d-%d I2C:%x"), vpin, vpin+nPins-1, I2CAddress);
-  #endif
-  PCF8574 *dev = new PCF8574();
-  dev->_firstVpin = vpin;
-  dev->_nPins = min(nPins, 8*8);
-  uint8_t nModules = (dev->_nPins + 7) / 8; // Number of modules in use.
-  dev->_nModules = nModules;
-  // Allocate memory for module state
-  uint8_t *blockAddress = (uint8_t *)calloc(2, nModules);
-  dev->_portInputState = blockAddress;
-  dev->_portOutputState = blockAddress + nModules;
-  dev->_I2CAddress = I2CAddress;
-  addDevice(dev);
-  return dev;
-}
-
-// Parameters: firstVPIN, nPins
-// We allow up to 8 devices, on successive I2C addresses starting 
-// with the specified one.  VPINS are allocated contiguously, 8 
-// per device.
-void PCF8574::create(VPIN vpin, int nPins, uint8_t I2CAddress) {
-  createInstance(vpin, nPins, I2CAddress);
-}
-
-// Device-specific initialisation
-void PCF8574::_begin() {
   // Initialise structure for reading input register
-  requestBlock.setReadParams(0, inputBuffer, sizeof(inputBuffer));
+  requestBlock.setReadParams(I2CAddress, inputBuffer, sizeof(inputBuffer));
 
   I2CManager.begin();
   I2CManager.setClock(100000);  // Only supports slow clock by default
 
-  for (int i=0; i<_nModules; i++) {
-    if (I2CManager.exists(_I2CAddress+i))
-      DIAG(F("PCF8574 configured on I2C:x%x"), (int)_I2CAddress+i);
-    _portInputState[i] = 0x00;
-    _portOutputState[i] = 0x00; // Defaults to output zero.
-  }
+  if (I2CManager.exists(_I2CAddress))
+    DIAG(F("PCF8574 created Vpins:%d-%d I2C:%x"), _firstVpin, _firstVpin+nPins-1, _I2CAddress);
+  _portInputState = 0x00;
+  _portOutputState = 0x00; // Defaults to output zero.
+}
+
+// Static create method for one module.
+void PCF8574::create(VPIN vpin, int nPins, uint8_t I2CAddress) {
+  PCF8574 *dev = new PCF8574(vpin, nPins, I2CAddress);
+  addDevice(dev);
+}
+
+// Device-specific initialisation
+void PCF8574::_begin() {
 }
 
 // Device-specific pin configuration function.  The PCF8574 will not work in input mode
 // unless a pullup is configured.  So return false (fail) if anything else requested.
-bool PCF8574::_configure(VPIN vpin, bool pullup) {
+bool PCF8574::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) {
   (void)vpin;   // Suppress compiler warning
-  if (pullup) 
-    return true;
-  else
-    return false;
+  if (configType != CONFIGURE_INPUT) return false;
+  if (paramCount == 1) {
+    bool pullup = params[0];
+    if (pullup) return true;
+  }
+  return false;
 }
 
 // Device-specific write function.
 void PCF8574::_write(VPIN vpin, int value) {
   int pin = vpin -_firstVpin;
-  int deviceIndex = pin / 8;
-  pin %= 8; // Pin within device
   #ifdef DIAG_IO
-  DIAG(F("PCF8574::_write I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress+deviceIndex, (int)vpin, value);
+  DIAG(F("PCF8574::_write I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress, (int)vpin, value);
   #endif
   uint8_t mask = 1 << pin;
   if (value) 
-    _portOutputState[deviceIndex] |= mask;
+    _portOutputState |= mask;
   else
-    _portOutputState[deviceIndex] &= ~mask;
-  I2CManager.write(_I2CAddress+deviceIndex, &_portOutputState[deviceIndex], 1);
+    _portOutputState &= ~mask;
+  I2CManager.write(_I2CAddress, &_portOutputState, 1);
 }
 
-// Device-specific read function.
-// We reduce number of I2C reads by cacheing 
-// the port value, so that a call from _read
-// can use the cached value if (a) it's not too
-// old and (b) the port mode hasn't been changed and 
-// (c) the port hasn't been written to.
+// Device-specific read function.  Returns the last input value scanned.
 int PCF8574::_read(VPIN vpin) {
   int result;
   int pin = vpin-_firstVpin;
-  int deviceIndex = pin / 8;  
-  pin %= 8;
   uint8_t mask = 1 << pin;
   // To enable the pin to be read, write a '1' to it first.  The connected
   // equipment should pull the input down to ground.
-  if (!(_portOutputState[deviceIndex] & mask)) {
+  if (!(_portOutputState & mask)) {
     // Pin currently driven to zero, so set to one first and then read value
-    _portOutputState[deviceIndex] |= mask;
+    _portOutputState |= mask;
     uint8_t inBuffer;
-    uint8_t status = I2CManager.read(_I2CAddress+deviceIndex, &inBuffer, 1, &_portOutputState[deviceIndex], 1);
-    if (status == I2C_STATUS_OK)
-      _portInputState[deviceIndex] = inBuffer;
-    else  
-      _portInputState[deviceIndex] = 0xff;  // Return ones if can't read
+    uint8_t status = I2CManager.read(_I2CAddress, &inBuffer, 1, &_portOutputState, 1);
+    if (status != I2C_STATUS_OK)
+      inBuffer = 0xff;  // Return ones if can't read
+    _portInputState = inBuffer;
   }
-  if (_portInputState[deviceIndex] & mask) 
+  if (_portInputState & mask) 
     result = 1;
   else
     result = 0;
@@ -129,35 +104,26 @@ int PCF8574::_read(VPIN vpin) {
   return result;
 }
 
-// Loop function to maintain timers associated with port read optimisation.  Decrement port counters
-// periodically.  When the portCounter reaches zero, the port value is considered to be out-of-date
-// and will need re-reading.
+// Loop function to do background scanning of the input port.
 void PCF8574::_loop(unsigned long currentMicros) {
   if (requestBlock.isBusy()) return;  // Do nothing if a port read is in progress
-  if (currentPollDevice >= 0) {
+  if (scanActive) {
     // Scan in progress and last request completed, so retrieve port status from buffer
     if (requestBlock.status == I2C_STATUS_OK) 
-      _portInputState[currentPollDevice] = inputBuffer[0];
+      _portInputState = inputBuffer[0];
     else
-      _portInputState[currentPollDevice] = 0xff;
-    if (++currentPollDevice >= _nModules)
-      currentPollDevice = -1;  // Scan completed
+      _portInputState = 0xff;
+    scanActive = false;
   } else if (currentMicros - _lastLoopEntry > _portTickTime) {
-      currentPollDevice = 0;  // Starting new scan.
-    _lastLoopEntry = currentMicros;
-  }
-
-  if (currentPollDevice >= 0) {
-    // Initiate read of next module
-    requestBlock.i2cAddress = _I2CAddress+currentPollDevice;
+    scanActive = true;
+    // Initiate read of module input register
     I2CManager.queueRequest(&requestBlock);
+    _lastLoopEntry = currentMicros;
   }
 }
 
 void PCF8574::_display() {
-  for (int i=0; i<_nModules; i++) {
-    DIAG(F("PCF8574 VPins:%d-%d I2C:x%x"), (int)_firstVpin+i*8, 
-      (int)min(_firstVpin+i*8+7,_firstVpin+_nPins-1), (int)(_I2CAddress+i));
-  }
+  DIAG(F("PCF8574 VPins:%d-%d I2C:x%x"), (int)_firstVpin, 
+    (int)_firstVpin+_nPins-1, (int)_I2CAddress);
 }
 

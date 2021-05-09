@@ -25,14 +25,38 @@
 struct SensorData {
   int snum;
   VPIN pin;
-//  uint8_t pullUp;
+  uint8_t pullUp;
 };
 
-struct Sensor{
-  static Sensor *firstSensor;
-  static Sensor *readingSensor;
+class Sensor{
+  // The sensor list is a linked list where each sensor's 'nextSensor' field points to the next.
+  //   The pointer is null in the last on the list.
+  //   To partition the sensor into those sensors which require polling through cyclic calls
+  //   to 'IODevice::read(vpin)', and those which support callback on change, 'firstSensor' 
+  //   points to the start of the overall list, and 'lastSensor' points to the end of the list
+  //   (the last sensor object). This structure allows sensors to be added to the start or the
+  //   end of the list easily.  So if an input pin supports change notification, it is placed at the 
+  //   end of the list.  If not, it is placed at the beginning.  And the pointer 'firstScanSensor' 
+  //   is set to the first of the sensor objects that requires scanning.  Thus, we can iterate
+  //   through the whole list, or just through the part that requires scanning.
+
+public:
   SensorData data;
-  uint8_t state;  // bit 7=active; bit 6=input state; bits 5-0=latchDelay
+  struct {
+    unsigned int active:1;
+    unsigned int inputState:1;
+    unsigned int latchDelay:6;
+  };   // bit 7=active; bit 6=input state; bits 4-0=latchDelay
+
+  static Sensor *firstSensor;
+  static Sensor *firstScanSensor;
+  static Sensor *lastSensor;
+  // readingSensor points to the next sensor to be polled, or null if the poll cycle is completed for
+  // the period.
+  static Sensor *readingSensor;
+
+  // Constructor
+  Sensor(); 
   Sensor *nextSensor;
   void setState(int state);
   static void load();
@@ -48,6 +72,10 @@ struct Sensor{
   static const unsigned int minReadCount = 2; // number of consecutive reads before acting on change
                                         // E.g. 2 x 5000 means debounce time of 10ms
                                         // Max value is 64
+
+  static void inputChangeCallback(VPIN vpin, int state);
+  static IONotifyStateChangeCallback *nextInputChangeCallback;
+  static bool inputChangeCallbackRegistered;
 }; // Sensor
 
 #endif

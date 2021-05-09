@@ -23,9 +23,21 @@
 #include "IODevice.h"
 
 struct OutputData {
-  uint8_t flags;  // Bit 7=output status, bits 0-2=input flags
-      // (Bit 0=Invert, Bit 1=Set state to default, Bit 2=default state)
-  uint8_t id;
+  union {
+    uint8_t oStatus;      // (Bit 0=Invert, Bit 1=Set state to default, Bit 2=default state, Bit 7=active)
+    struct {
+      unsigned int flags : 7; // Bit 0=Invert, Bit 1=Set state to default, Bit 2=default state
+      unsigned int : 1;
+    };
+    struct {
+      unsigned int invert : 1;
+      unsigned int setDefault : 1;
+      unsigned int defaultValue : 1;
+      unsigned int: 4;
+      unsigned int active : 1;
+    };
+  };
+  int id;
   VPIN pin; 
 };
 

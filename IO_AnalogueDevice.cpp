@@ -68,10 +68,11 @@ void Analogue::_loop(unsigned long currentMicros) {
   }
 }
 
-// Device params are activePosition, inactivePosition, and profile.
-bool Analogue::_configure(VPIN vpin, int paramCount, int params[]) {
-  (void)vpin;  // Suppress compiler warning
+// Device params are activePosition, inactivePosition, profile and state.
+bool Analogue::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) {
+  if (configType != CONFIGURE_SERVO) return false;
   if (paramCount != 4) return false;
+  _state = params[3];  // Set initial state
   _configure(vpin, params[0], params[1], (ProfileType)params[2]);
   return true;
 }

@@ -43,13 +43,14 @@ void IODevice::begin() {
 #if !defined(ARDUINO_AVR_NANO) && !defined(ARDUINO_AVR_UNO)
   // Predefine two PCA9685 modules 0x40-0x41
   // Allocates 32 pins 100-131
-  PCA9685::create(IODevice::firstServoVpin, 32, 0x40);
+  PCA9685::create(100, 16, 0x40);
+  PCA9685::create(116, 16, 0x41);
   // Predefine one PCF8574 module 0x23
   // Allocates 8 pins 132-139
-  PCF8574::create(IODevice::firstServoVpin+32, 8, 0x23);
+  PCF8574::create(132, 8, 0x23);
   // Predefine one MCP23017 module 0x20
   // Allocates 16 pins 164-x179
-  MCP23017::create(IODevice::firstServoVpin+64, 16, 0x20);
+  MCP23017::create(164, 16, 0x20);
 #endif
 }
 
@@ -61,12 +62,11 @@ void IODevice::begin() {
 // doesn't need to invoke it.
 void IODevice::loop() {
   unsigned long currentMicros = micros();
-  // Call every device's loop function in turn.
+  // Call every device's loop function in turn, one per entry.
   if (!_nextLoopDevice) _nextLoopDevice = _firstDevice;
   _nextLoopDevice->_loop(currentMicros);
   _nextLoopDevice = _nextLoopDevice->_nextDevice;
-  I2CManager.loop();
-
+  
   // Report loop time if diags enabled
 //#if defined(DIAG_IO)
   static unsigned long lastMicros = 0;
@@ -101,6 +101,14 @@ void IODevice::DumpAll() {
 bool IODevice::exists(VPIN vpin) {
   return findDevice(vpin) != NULL;
 }
+
+// check whether the pin supports notification.  If so, then regular _read calls are not required.
+bool IODevice::hasCallback(VPIN vpin) {
+  IODevice *dev = findDevice(vpin);
+  if (!dev) return false;
+  return dev->_hasCallback(vpin);
+}
+
 
 // Remove specified device if one exists.  This is necessary if devices are
 // created on-the-fly by Turnouts, Sensors or Outputs since they may have
@@ -139,21 +147,11 @@ void IODevice::_display() {
 
 // Find device associated with nominated Vpin and pass configuration values on to it.
 //   Return false if not found.
-bool IODevice::configure(VPIN vpin, int paramCount, int params[]) {
+bool IODevice::configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) {
   IODevice *dev = findDevice(vpin);
-  if (dev) return dev->_configure(vpin, paramCount, params);
+  if (dev) return dev->_configure(vpin, configType, paramCount, params);
   return false;
 }
-
-// Find device associaed with nominated Vpin and pass request on to it.
-//  configurePullup is used invoke a GPIO IODevice instance's _configurePullup method.
-//  Return false if not found.
-bool IODevice::configurePullup(VPIN vpin, bool pullup) {
-  IODevice *dev = findDevice(vpin);
-  if (dev) return dev->_configurePullup(vpin, pullup);
-  return false;
-}
-
 
 // Write value to virtual pin(s).  If multiple devices are allocated the same pin
 //  then only the first one found will be used.
@@ -164,7 +162,7 @@ void IODevice::write(VPIN vpin, int value) {
     return;
   }
 #ifdef DIAG_IO
-  DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
+  //DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
 #endif
 }
 
@@ -188,6 +186,12 @@ IODevice *IODevice::findDevice(VPIN vpin) {
   return NULL;
 }
   
+//==================================================================================================================
+// Static data
+//------------------------------------------------------------------------------------------------------------------
+
+IONotifyStateChangeCallback *IODevice::_notifyCallbackChain = 0;
+
 
 //==================================================================================================================
 // Instance members
@@ -211,7 +215,7 @@ void IODevice::writeDownstream(VPIN vpin, int value) {
     }
   }
 #ifdef DIAG_IO
-  DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
+  //DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
 #endif  
 } 
 
@@ -222,7 +226,7 @@ bool IODevice::read(VPIN vpin) {
       return dev->_read(vpin);
   }
 #ifdef DIAG_IO
-  DIAG(F("IODevice::read(): Vpin %d not found!"), (int)vpin);
+  //DIAG(F("IODevice::read(): Vpin %d not found!"), (int)vpin);
 #endif
   return false;
 }
@@ -248,7 +252,11 @@ ArduinoPins::ArduinoPins(VPIN firstVpin, int nPins) {
 }
 
 // Device-specific pin configuration
-bool ArduinoPins::_configurePullup(VPIN id, bool pullup) {
+bool ArduinoPins::_configure(VPIN id, ConfigTypeEnum configType, int paramCount, int params[]) {
+  if (configType != CONFIGURE_INPUT) return false;
+  if (paramCount != 1) return false;
+  bool pullup = params[0];
+
   int pin = id;
   #ifdef DIAG_IO
   DIAG(F("Arduino _configurePullup Pin:%d Val:%d"), pin, pullup);
