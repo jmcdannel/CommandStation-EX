@@ -151,7 +151,7 @@ void Output::load(){
     // Create new object, set current state to default or to saved state from eeprom.
     tt=create(data.id, data.pin, data.flags, data.setDefault ? data.defaultValue : data.active);
 
-    tt->num=EEStore::pointer() + offsetof(OutputData, oStatus); // Save pointer to flags within EEPROM
+    if (tt) tt->num=EEStore::pointer() + offsetof(OutputData, oStatus); // Save pointer to flags within EEPROM
     EEStore::advance(sizeof(tt->data));
   }
 }

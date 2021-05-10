@@ -21,9 +21,6 @@
 #include "DIAG.h"
 #include "I2CManager.h"
 
-// Define symbol to enable PCF8574 input port value caching (reduce I2C traffic).
-#define PCF8574_OPTIMISE
-
 // Constructor
 PCF8574::PCF8574(VPIN vpin, int nPins, uint8_t I2CAddress) {
   _firstVpin = vpin;
@@ -34,7 +31,9 @@ PCF8574::PCF8574(VPIN vpin, int nPins, uint8_t I2CAddress) {
   requestBlock.setReadParams(I2CAddress, inputBuffer, sizeof(inputBuffer));
 
   I2CManager.begin();
-  I2CManager.setClock(100000);  // Only supports slow clock by default
+  // According to spec, the PCF8574 operates at 100kHz max.  However, I've not had
+  // any problems with it at 400kHz so you might want to override this.
+  I2CManager.setClock(100000);  
 
   if (I2CManager.exists(_I2CAddress))
     DIAG(F("PCF8574 created Vpins:%d-%d I2C:%x"), _firstVpin, _firstVpin+nPins-1, _I2CAddress);
@@ -98,9 +97,6 @@ int PCF8574::_read(VPIN vpin) {
     result = 1;
   else
     result = 0;
-  #ifdef DIAG_IO
-  //DIAG(F("PCF8574::_read I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress+deviceIndex, (int)pin, result);
-  #endif
   return result;
 }
 
@@ -108,12 +104,20 @@ int PCF8574::_read(VPIN vpin) {
 void PCF8574::_loop(unsigned long currentMicros) {
   if (requestBlock.isBusy()) return;  // Do nothing if a port read is in progress
   if (scanActive) {
+    uint8_t previousState = _portInputState;
     // Scan in progress and last request completed, so retrieve port status from buffer
     if (requestBlock.status == I2C_STATUS_OK) 
       _portInputState = inputBuffer[0];
     else
       _portInputState = 0xff;
     scanActive = false;
+    #ifdef DIAG_IO
+    uint8_t differences = _portInputState ^ previousState;
+    if (differences)
+      DIAG(F("PCF8574 Port Change I2C:x%x Value x%x"), (int)_I2CAddress, _portInputState);
+    #else
+    (void)previousState; // Suppress compiler warning.
+    #endif
   } else if (currentMicros - _lastLoopEntry > _portTickTime) {
     scanActive = true;
     // Initiate read of module input register

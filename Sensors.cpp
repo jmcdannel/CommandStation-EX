@@ -73,20 +73,20 @@ decide to ignore the <q ID> return and only react to <Q ID> triggers.
 
 
 ///////////////////////////////////////////////////////////////////////////////
-//
-// checks one defined sensor and prints _changed_ sensor state
+// checks a number of defined sensors per entry and prints _changed_ sensor state
 // to stream unless stream is NULL in which case only internal
 // state is updated. Then advances to next sensor which will
 // be checked at next invocation.  Each cycle of reading all sensors will
-// take place no more frequently than the time set by 'cycleInterval' microseconds.
-// Note that the list of sensors is divided such that the first part of the list
+// be initiated no more frequently than the time set by 'cycleInterval' microseconds.
+//
+// The list of sensors is divided such that the first part of the list
 // contains sensors that support change notification via callback, and the second
 // part of the list contains sensors that require cyclic polling.  The start of the
-// second part of the list is defined by the 'firstScanSensor'.
+// second part of the list is determined from by the 'firstScanSensor' pointer.
 ///////////////////////////////////////////////////////////////////////////////
 
 void Sensor::checkAll(Print *stream){
-  
+  uint16_t sensorCount = 0;
 #ifndef IO_MINIMALHAL
   // Register the event handler ONCE!
   if (!inputChangeCallbackRegistered)
@@ -96,35 +96,42 @@ void Sensor::checkAll(Print *stream){
 
   if (firstSensor == NULL) return;  // No sensors to be scanned
   if (readingSensor == NULL) { 
+    // Not currently scanning sensor list
     unsigned long thisTime = micros();
     if (thisTime - lastReadCycle >= cycleInterval) {
-      // Required time elapsed since last read cycle started, so initiate new read cycle
+      // Required time elapsed since last read cycle started,
+      // so initiate new scan through the sensor list
       readingSensor = firstSensor;
       lastReadCycle = thisTime;
     }
   }
-  if (!readingSensor) return;
 
-  while (true) {
+  // Loop until either end of list is encountered or we pause for some reason
+  bool pause = false;
+  while (readingSensor != NULL && !pause) {
 
 #ifndef IO_MINIMALHAL
     if (readingSensor == firstSensor) 
-      processingNotifySignals = true;
+      readSignalValuePhase = false;
     else if (readingSensor == firstScanSensor)
-      processingNotifySignals = false;
+      readSignalValuePhase = true;
 #else
-    // All sensor inputs are scanned from this function.
-    processingNotifySignals = false;
+    // All sensor inputs are scanned in this mode.
+    readSignalValuePhase = true;
 #endif
 
-    // Unpack the data from the sensor object
-    VPIN pin = readingSensor->data.pin;
     // Where the sensor is attached to a pin, read pin status and invert.  For sources such as LCN,
-    // which don't have an input pin to read, the source calls setState() to update inputState.
-    // Also, the inputstate is set directly by change notifications from HAL drivers (where implemented)
-    if (!processingNotifySignals) {
+    // which don't have an input pin to read, the LCN class calls setState() to update inputState when
+    // a message is received.
+    // Also, on HAL drivers that support change notifications, the driver calls the notification callback
+    // routine when an input signal change is detected, and this updates the inputState directly,
+    // so these don't need to be read here.
+    VPIN pin = readingSensor->data.pin;
+    if (readSignalValuePhase) {
       if (pin!=VPIN_NONE) readingSensor->inputState = !IODevice::read(pin);
     }
+
+    // Check if changed since last time, and process changes.
     if (readingSensor->inputState == readingSensor->active) {
       // no change
       readingSensor->latchDelay = 0;
@@ -136,21 +143,35 @@ void Sensor::checkAll(Print *stream){
       readingSensor->active = readingSensor->inputState;
       readingSensor->latchDelay = 0;
       
-      if (stream != NULL) StringFormatter::send(stream, F("<%c %d>\n"), readingSensor->active ? 'Q' : 'q', readingSensor->data.snum);
+      if (stream != NULL) {
+        StringFormatter::send(stream, F("<%c %d>\n"), readingSensor->active ? 'Q' : 'q', readingSensor->data.snum);
+        pause = true;  // Don't check any more sensors on this entry
+      }
     }
 
+    // Move to next sensor in list.
     readingSensor = readingSensor->nextSensor;
-    if (readingSensor == firstScanSensor) processingNotifySignals = false;  // Finished first part of list
 
-    // Currently read only one sensor per entry for scanned signals.
-    //  Signals whose state is notified by callback are processed in one entry. 
-    if (!processingNotifySignals) break;
+    // Currently process max of 16 sensors per entry for polled sensors, and
+    //  16 per entry for sensors notified by callback.
+    // Performance measurements taken during development indicate that, with 128 sensors configured
+    // on 8 MCP23017 GPIO expanders, all 128 inputs can be read within 3ms (400Mhz I2C bus speed), and a 
+    // full sensor scan cycle generally takes less than 5ms.
+    //
+    sensorCount++;
+    if (readSignalValuePhase) {
+      if (sensorCount >= 16) pause = true;
+    } else {
+      if (sensorCount >= 16) pause = true;
+    }
   }
+
 } // Sensor::checkAll
 
 #ifndef IO_MINIMALHAL
 // Callback from HAL (IODevice class) when a digital input change is recognised.
-// TODO: Should identify suitable stream for sending the results, currently hard coded "Serial"
+// Updates the inputState field, which is subsequently scanned for changes in the checkAll 
+// method.
 void Sensor::inputChangeCallback(VPIN vpin, int state) {
   Sensor *tt;
   for (tt=firstSensor; tt!=NULL ; tt=tt->nextSensor) {
@@ -174,7 +195,7 @@ void Sensor::printAll(Print *stream){
 
   if (stream != NULL) {
     for(Sensor * tt=firstSensor;tt!=NULL;tt=tt->nextSensor){
-      StringFormatter::send(stream, F("<Q %d %d %d>\n"), tt->data.snum, tt->data.pin, tt->data.pullUp); // definition
+      StringFormatter::send(stream, F("<%c %d>\n"), tt->active ? 'Q' : 'q', tt->data.snum);
     }
   } // loop over all sensors
 } // Sensor::printAll
@@ -185,23 +206,22 @@ void Sensor::printAll(Print *stream){
 Sensor *Sensor::create(int snum, VPIN pin, int pullUp){
   Sensor *tt;
 
-  if (pin > VPIN_MAX) return NULL;
+  if (pin > VPIN_MAX && pin != VPIN_NONE) return NULL;
+
   remove(snum);  // Unlink and free any existing sensor with the same id, before creating the new one.
 
   tt = (Sensor *)calloc(1,sizeof(Sensor));
   if (!tt) return tt;     // memory allocation failure
 
-  if (IODevice::hasCallback(pin)) {
-    // Callback available, so link sensor on to the start of the list
+  if (pin == VPIN_NONE || IODevice::hasCallback(pin)) {
+    // Callback available, or no pin to read, so link sensor on to the start of the list
     tt->nextSensor = firstSensor;
     firstSensor = tt;
     if (lastSensor == NULL) lastSensor = tt;  // This is only item in list.
   } else {
-    // No callback, so add to end of list.
-    if (lastSensor != NULL)
-      lastSensor->nextSensor = tt;
-    else 
-      lastSensor = tt;
+    // No callback, so add to end of list so it's polled.
+    if (lastSensor != NULL) lastSensor->nextSensor = tt;
+    lastSensor = tt;
     if (!firstSensor) firstSensor = tt;
     if (!firstScanSensor) firstScanSensor = tt;
   }
@@ -212,6 +232,7 @@ Sensor *Sensor::create(int snum, VPIN pin, int pullUp){
   tt->active = 0;
   tt->inputState = 0;
   tt->latchDelay = 0;
+
   int params[] = {pullUp};
   if (pin != VPIN_NONE) 
     IODevice::configure(pin, IODevice::CONFIGURE_INPUT, 1, params);   
@@ -219,7 +240,6 @@ Sensor *Sensor::create(int snum, VPIN pin, int pullUp){
     // for external infrared sensors --- each sensor must have its own 1K external pull-up resistor
 
   return tt;
-
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -303,7 +323,7 @@ Sensor *Sensor::firstScanSensor = NULL;
 Sensor *Sensor::lastSensor = NULL;
 Sensor *Sensor::readingSensor=NULL;
 unsigned long Sensor::lastReadCycle=0;
-bool Sensor::processingNotifySignals = false;
+bool Sensor::readSignalValuePhase = false;
 
 #ifndef IO_MINIMALHAL
 IONotifyStateChangeCallback *Sensor::nextInputChangeCallback = 0;

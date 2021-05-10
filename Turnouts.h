@@ -50,8 +50,8 @@ struct TurnoutData {
   union {
     struct {
       // DCC address (Address in bits 15-2, subaddress in bits 1-0
-      uint16_t address; // CS currently supports linear address 0-2047.  
-        // That's DCC accessory address 0-511 and subaddress 0-3.
+      uint16_t address; // CS currently supports linear address 1-2048
+        // That's DCC accessory address 1-512 and subaddress 0-3.
     } dccAccessoryData;
     struct {
       VPIN vpin;
@@ -84,7 +84,7 @@ public:
   static Turnout *createServo(int id , VPIN vpin , uint16_t activeAngle, uint16_t inactiveAngle, uint8_t profile=1, uint8_t initialState=0);
 #endif
   static Turnout *createVpin(int id, VPIN vpin, uint8_t initialState=0);
-  static Turnout *createDCC(int id, uint16_t address, uint8_t subAddress, uint8_t initialState=0);
+  static Turnout *createDCC(int id, uint16_t address, uint8_t subAddress);
   static Turnout *createLCN(int id, uint8_t initialState=0);
   static Turnout *create(int id, int params, int16_t p[]);
   static Turnout *create(int id);

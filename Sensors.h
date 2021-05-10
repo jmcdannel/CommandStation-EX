@@ -72,7 +72,7 @@ public:
   static const unsigned int minReadCount = 2; // number of consecutive reads before acting on change
                                         // E.g. 2 x 5000 means debounce time of 10ms
                                         // Max value is 64
-  static bool processingNotifySignals;
+  static bool readSignalValuePhase;
  
 #ifndef IO_MINIMALHAL
   static void inputChangeCallback(VPIN vpin, int state);

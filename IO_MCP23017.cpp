@@ -21,8 +21,6 @@
 #include "I2CManager.h"
 #include "DIAG.h"
 
-#define MCP23017_OPTIMISE 
-
 // Pre-declare helper functions
 static void writeRegister(uint8_t address, uint8_t reg, uint8_t value);
 static void writeRegister2(uint8_t address, uint8_t reg, uint8_t valueA, uint8_t valueB);
@@ -47,7 +45,7 @@ MCP23017::MCP23017(VPIN firstVpin, int nPins, uint8_t I2CAddress, int interruptP
   I2CManager.begin();
   I2CManager.setClock(1000000);
   if (I2CManager.exists(I2CAddress))
-    DIAG(F("MCP23017 configured Vpins:%d-%d I2C:%x"), _firstVpin, _firstVpin+nPins-1, _I2CAddress);
+    DIAG(F("MCP23017 configured Vpins:%d-%d I2C:x%x"), _firstVpin, _firstVpin+nPins-1, _I2CAddress);
   _portMode = 0xFFFF; // Default to input mode
   _portPullup = 0xFFFF; // Default to pullup enabled
   _currentPortState = 0x0000;
@@ -70,7 +68,7 @@ void MCP23017::create(VPIN firstVpin, int nPins, uint8_t I2CAddress, int interru
 void MCP23017::_begin() { 
 }
 
-// Device-specific pin configuration
+// Device-specific pin configuration.  One parameter, which is pullup enable.
 bool MCP23017::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) {
   if (configType != CONFIGURE_INPUT) return false;
   if (paramCount != 1) return false;
@@ -127,14 +125,14 @@ void MCP23017::_write(VPIN vpin, int value) {
 bool MCP23017::_hasCallback(VPIN vpin) {
   (void) vpin;  // suppress compiler warning.
 #ifdef IO_MINIMALHAL
-  return false;
+  return false;  // Turn off callback notification
 #else
-  return true;
+  return true;   // Enable callback notification to reduce need to poll input state.
 #endif
 }
 
-// Device-specific read function.  If pin previously in write mode, then set read mode and read
-//  the port value synchronously.  Subsequent the port reads are done from the _loop function.
+// Device-specific read function.  If pin was previously in write mode, then set read mode and read
+//  the current port value synchronously.  Subsequent port reads are done from the _loop function.
 int MCP23017::_read(VPIN vpin) {
   int result;
   int pin = vpin-_firstVpin;
@@ -153,9 +151,6 @@ int MCP23017::_read(VPIN vpin) {
     result = 1;
   else
     result = 0;
-  #ifdef DIAG_IO
-  //DIAG(F("MCP23017 Read I2C:x%x Pin:%d Value:%d"), (int)address, (int)pin, result);
-  #endif
   return result;
 }
 
@@ -164,6 +159,7 @@ void MCP23017::_loop(unsigned long currentMicros) {
   uint16_t inputStates;
   if (requestBlock.isBusy()) return;  // Do nothing if a port read is in progress
   if (scanActive) {
+    scanActive = false;
     // Scan in progress and last request completed, so retrieve port status from buffer
     if (requestBlock.status == I2C_STATUS_OK)  {
       inputStates = ((uint16_t)inputBuffer[1] << 8) | inputBuffer[0];
@@ -172,8 +168,14 @@ void MCP23017::_loop(unsigned long currentMicros) {
     uint16_t differences = inputStates ^ _currentPortState;
      // Save input states
     _currentPortState = inputStates;
-    scanActive = false;
+    #if DIAG_IO
+    if (differences)
+      DIAG(F("MCP23017 Port Change I2C:x%x Value:x%x"), (int)_I2CAddress, _currentPortState);
+    #else
+      (void)differences;  // Suppress compiler warning
+    #endif
 
+#ifndef IO_MINIMALHAL
     // Scan for changes in input states and invoke callback
     if (differences && (_notifyCallbackChain != NULL)) {
       // Scan for differences bit by bit
@@ -186,7 +188,8 @@ void MCP23017::_loop(unsigned long currentMicros) {
         mask <<= 1;
       }
     }
-    
+#endif
+
   } else if (currentMicros - _lastLoopEntry > _portTickTime) {
     if (_gpioInterruptPin < 0 || digitalRead(_gpioInterruptPin) == 0) {
       // A cyclic scan is due, and either a GPIO device has pulled down its interrupt pin to

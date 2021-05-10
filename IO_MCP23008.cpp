@@ -21,10 +21,6 @@
 #include "DIAG.h"
 #include "I2CManager.h"
 
-// Define symbol to enable MCP23008 input port value caching (reduce I2C traffic).
-#define MCP23008_OPTIMISE
-
-
 // Predeclare helper functions
 static void writeRegister(uint8_t I2CAddress, uint8_t reg, uint8_t value) ;
 static uint8_t readRegister(uint8_t I2CAddress, uint8_t reg);
@@ -130,9 +126,6 @@ int MCP23008::_read(VPIN vpin) {
     result = 1;
   else
     result = 0;
-  #ifdef DIAG_IO
-  //DIAG(F("MCP23008 Read I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress, (int)pin, result);
-  #endif
   return result;
 }
 
@@ -142,11 +135,19 @@ int MCP23008::_read(VPIN vpin) {
 void MCP23008::_loop(unsigned long currentMicros) {
   if (requestBlock.isBusy()) return;  // Do nothing if a port read is in progress
   if (scanActive) {
+    uint8_t previousState = _portInputState;
     // Scan in progress and last request completed, so retrieve port status from buffer
     if (requestBlock.status == I2C_STATUS_OK) 
       _portInputState = inputBuffer[0];
     else
       _portInputState = 0xff;
+    uint8_t differences = previousState ^ _portInputState;
+    #if DIAG_IO
+    if (differences)
+      DIAG(F("MCP23008 Port Change I2C:x%x Value:x%x"), (int)_I2CAddress, _portInputState);
+    #else
+      (void) differences;  // Suppress compiler warning.
+    #endif
     scanActive = false;
   } else if (currentMicros - _lastLoopEntry > _portTickTime) {
     if (_gpioInterruptPin < 0 || digitalRead(_gpioInterruptPin) == 0) {
