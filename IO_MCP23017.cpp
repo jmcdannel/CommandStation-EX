@@ -126,7 +126,11 @@ void MCP23017::_write(VPIN vpin, int value) {
 // Function called to check whether callback notification is supported by this pin.
 bool MCP23017::_hasCallback(VPIN vpin) {
   (void) vpin;  // suppress compiler warning.
+#ifdef IO_MINIMALHAL
+  return false;
+#else
   return true;
+#endif
 }
 
 // Device-specific read function.  If pin previously in write mode, then set read mode and read

@@ -80,10 +80,12 @@ public:
   static void setActive(int n, bool state);
   static void load();
   static void store();
+#ifndef IO_MINIMALHAL
+  static Turnout *createServo(int id , VPIN vpin , uint16_t activeAngle, uint16_t inactiveAngle, uint8_t profile=1, uint8_t initialState=0);
+#endif
   static Turnout *createVpin(int id, VPIN vpin, uint8_t initialState=0);
   static Turnout *createDCC(int id, uint16_t address, uint8_t subAddress, uint8_t initialState=0);
   static Turnout *createLCN(int id, uint8_t initialState=0);
-  static Turnout *createServo(int id , VPIN vpin , uint16_t activeAngle, uint16_t inactiveAngle, uint8_t profile=1, uint8_t initialState=0);
   static Turnout *create(int id, int params, int16_t p[]);
   static Turnout *create(int id);
   void activate(bool state);

@@ -86,28 +86,45 @@ decide to ignore the <q ID> return and only react to <Q ID> triggers.
 ///////////////////////////////////////////////////////////////////////////////
 
 void Sensor::checkAll(Print *stream){
+  
+#ifndef IO_MINIMALHAL
   // Register the event handler ONCE!
   if (!inputChangeCallbackRegistered)
     nextInputChangeCallback = IODevice::registerInputChangeNotification(inputChangeCallback);
   inputChangeCallbackRegistered = true;
+#endif
 
-  if (firstScanSensor == NULL) return;  // No sensors to be scanned
+  if (firstSensor == NULL) return;  // No sensors to be scanned
   if (readingSensor == NULL) { 
     unsigned long thisTime = micros();
     if (thisTime - lastReadCycle >= cycleInterval) {
       // Required time elapsed since last read cycle started, so initiate new read cycle
-      readingSensor = firstScanSensor;
+      readingSensor = firstSensor;
       lastReadCycle = thisTime;
     }
   }
   if (!readingSensor) return;
 
   while (true) {
+
+#ifndef IO_MINIMALHAL
+    if (readingSensor == firstSensor) 
+      processingNotifySignals = true;
+    else if (readingSensor == firstScanSensor)
+      processingNotifySignals = false;
+#else
+    // All sensor inputs are scanned from this function.
+    processingNotifySignals = false;
+#endif
+
     // Unpack the data from the sensor object
     VPIN pin = readingSensor->data.pin;
     // Where the sensor is attached to a pin, read pin status and invert.  For sources such as LCN,
     // which don't have an input pin to read, the source calls setState() to update inputState.
-    if (pin!=VPIN_NONE) readingSensor->inputState = !IODevice::read(pin);
+    // Also, the inputstate is set directly by change notifications from HAL drivers (where implemented)
+    if (!processingNotifySignals) {
+      if (pin!=VPIN_NONE) readingSensor->inputState = !IODevice::read(pin);
+    }
     if (readingSensor->inputState == readingSensor->active) {
       // no change
       readingSensor->latchDelay = 0;
@@ -123,13 +140,15 @@ void Sensor::checkAll(Print *stream){
     }
 
     readingSensor = readingSensor->nextSensor;
-    // Currently read only one sensor per entry.  Break conditionally if you want to
-    //  read all sensors in one go, or some sensors per entry.
-    if (true) break;
+    if (readingSensor == firstScanSensor) processingNotifySignals = false;  // Finished first part of list
+
+    // Currently read only one sensor per entry for scanned signals.
+    //  Signals whose state is notified by callback are processed in one entry. 
+    if (!processingNotifySignals) break;
   }
 } // Sensor::checkAll
 
-
+#ifndef IO_MINIMALHAL
 // Callback from HAL (IODevice class) when a digital input change is recognised.
 // TODO: Should identify suitable stream for sending the results, currently hard coded "Serial"
 void Sensor::inputChangeCallback(VPIN vpin, int state) {
@@ -138,13 +157,12 @@ void Sensor::inputChangeCallback(VPIN vpin, int state) {
     if (tt->data.pin == vpin) break;
   }
   if (tt != NULL) { // Sensor found
-    tt->active = tt->inputState = (state == 0);
-    StringFormatter::send(Serial, F("<%c %d>\n"), state ? 'Q' : 'q', tt->data.snum);
+    tt->inputState = (state == 0); 
   }
   // Call next registered callback function
   if (nextInputChangeCallback) nextInputChangeCallback(vpin, state);
 }
-
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -156,9 +174,7 @@ void Sensor::printAll(Print *stream){
 
   if (stream != NULL) {
     for(Sensor * tt=firstSensor;tt!=NULL;tt=tt->nextSensor){
-      // JMRI currently seems not to accept sensor definitions with a <q> prefix, so split the definition and state notification
       StringFormatter::send(stream, F("<Q %d %d %d>\n"), tt->data.snum, tt->data.pin, tt->data.pullUp); // definition
-      StringFormatter::send(stream, F("<%c %d>\n"), tt->active ? 'Q' : 'q', tt->data.snum); // current state
     }
   } // loop over all sensors
 } // Sensor::printAll
@@ -287,5 +303,9 @@ Sensor *Sensor::firstScanSensor = NULL;
 Sensor *Sensor::lastSensor = NULL;
 Sensor *Sensor::readingSensor=NULL;
 unsigned long Sensor::lastReadCycle=0;
+bool Sensor::processingNotifySignals = false;
+
+#ifndef IO_MINIMALHAL
 IONotifyStateChangeCallback *Sensor::nextInputChangeCallback = 0;
 bool Sensor::inputChangeCallbackRegistered = false;
+#endif

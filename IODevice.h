@@ -23,15 +23,19 @@
 // Define symbol to enable diagnostic output
 //#define DIAG_IO Y
 
-// Define symbol to reduce memory footprint of IODevice HAL subsystem
+// Define symbol IO_MINIMALHAL to reduce FLASH footprint of IODevice HAL subsystem
+#if defined(ARDUINO_AVR_NANO) || defined(ARDUINO_AVR_UNO)
 #define IO_MINIMALHAL
+#endif
 
 #include "DIAG.h"
 #include "FSH.h"
 #include "I2CManager.h"
 
 typedef uint16_t VPIN;
-#define VPIN_MAX 32767  // Above this number, printing gives negative values.  This should be high enough
+// Limit VPIN number to max 32767.  Above this number, printing often gives negative values.
+// This should be enough for 99% of users.
+#define VPIN_MAX 32767  
 #define VPIN_NONE 65535
 
 

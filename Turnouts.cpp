@@ -199,12 +199,14 @@ void Turnout::load(){
     
     int lastKnownState = data.header.active;
     switch (data.header.type) {
+#ifndef IO_MINIMALHAL
       case TURNOUT_SERVO:
         EEPROM.get(EEStore::pointer(), data.servoData);
         EEStore::advance(sizeof(data.servoData));
         tt=createServo(data.header.id, data.servoData.vpin, 
           data.servoData.activePosition, data.servoData.inactivePosition, data.servoData.profile, lastKnownState);
         break;
+#endif
       case TURNOUT_VPIN:
         EEPROM.get(EEStore::pointer(), data.vpinData);
         EEStore::advance(sizeof(data.vpinData));
@@ -249,10 +251,12 @@ void Turnout::store(){
         EEPROM.put(EEStore::pointer(), tt->data.dccAccessoryData);
         EEStore::advance(sizeof(tt->data.dccAccessoryData));
         break;
+#ifndef IO_MINIMALHAL
       case TURNOUT_SERVO:
         EEPROM.put(EEStore::pointer(), tt->data.servoData);
         EEStore::advance(sizeof(tt->data.servoData));
         break;
+#endif
       case TURNOUT_VPIN:
         EEPROM.put(EEStore::pointer(), tt->data.vpinData);
         EEStore::advance(sizeof(tt->data.vpinData));
@@ -308,6 +312,7 @@ Turnout *Turnout::createLCN(int id, uint8_t state) {
 ///////////////////////////////////////////////////////////////////////////////
 // Method for creating a PCA9685 PWM Turnout.  
 
+#ifndef IO_MINIMALHAL
 Turnout *Turnout::createServo(int id, VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t state){
   if (activePosition > 511 || inactivePosition > 511 || profile > 4) return NULL;
   // Configure PWM interface device
@@ -325,7 +330,7 @@ Turnout *Turnout::createServo(int id, VPIN vpin, uint16_t activePosition, uint16
   tt->data.servoData.profile = profile;
   return(tt);
 }
-
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // Support for <T id SERVO pin activepos inactive pos profile>
@@ -334,11 +339,14 @@ Turnout *Turnout::createServo(int id, VPIN vpin, uint16_t activePosition, uint16
 
 Turnout *Turnout::create(int id, int params, int16_t p[]) {
   if (p[0] == HASH_KEYWORD_SERVO) { // <T id SERVO n n n n>
+#ifndef IO_MINIMALHAL
     if (params == 5)
       return createServo(id, (VPIN)p[1], (uint16_t)p[2], (uint16_t)p[3], (uint8_t)p[4]);
     else  
+#endif
       return NULL;
-  } else if (p[0]==HASH_KEYWORD_DCC) {
+  } else 
+  if (p[0]==HASH_KEYWORD_DCC) {
     if (params==3 && p[1]>=0 && p[1]<512 && p[2]>=0 && p[2]<4)  // <T id DCC n n>
       return createDCC(id, p[1], p[2]);
     else if (params==2 && p[1]>=0 && p[1]<512*4)  // <T id DCC nn>
@@ -352,9 +360,12 @@ Turnout *Turnout::create(int id, int params, int16_t p[]) {
       return NULL;
   } else if (params==2) { // <T id n n> for DCC or LCN
     return createDCC(id, p[0], p[1]);
-  } else if (params==3) { // legacy <T id n n n> for Servo
+  } 
+#ifndef IO_MINIMALHAL
+  else if (params==3) { // legacy <T id n n n> for Servo
     return createServo(id, (VPIN)p[0], (uint16_t)p[1], (uint16_t)p[2]);
   }
+#endif
   return NULL;
 }
 
