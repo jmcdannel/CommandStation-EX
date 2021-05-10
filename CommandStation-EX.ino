@@ -46,6 +46,11 @@
 
 #include "DCCEX.h"
 
+#if __has_include ( "myAutomation.h")
+  #include "RMFT.h"
+  #define RMFT_ACTIVE
+#endif
+
 // Create a serial command parser for the USB connection, 
 // This supports JMRI or manual diagnostics and commands
 // to be issued from the USB serial console.
@@ -88,6 +93,11 @@ void setup()
   #if defined(RMFT_ACTIVE) 
       RMFT::begin();
   #endif
+
+  extern __attribute__((weak)) void mySetup();
+  if (mySetup) {
+    mySetup();
+  }
 
   #if __has_include ( "mySetup.h")
         #define SETUP(cmd) serialParser.parse(F(cmd))  
