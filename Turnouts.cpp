@@ -98,6 +98,24 @@ bool Turnout::activate(int n, bool state){
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// Static function to check if the Turnout with ID 'n' is activated or not.
+// Returns false if turnout not found.
+
+bool Turnout::isActive(int n){
+  Turnout * tt=get(n);
+  if (!tt) return false;
+  return tt->isActive();
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Object function to check the status of Turnout is activated or not.
+
+bool Turnout::isActive() {
+  return data.active;
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // Object method to activate or deactivate the Turnout.  
 
 // activate is virtual here so that it can be overridden by a non-DCC turnout mechanism
