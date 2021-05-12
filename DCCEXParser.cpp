@@ -675,7 +675,7 @@ bool DCCEXParser::parseT(Print *stream, int16_t params, int16_t p[])
         if (!tt)
             return false;
         tt->activate(p[1]);
-        StringFormatter::send(stream, F("<H %d %d>\n"), p[0], tt->isActive());
+        StringFormatter::send(stream, F("<H %d %d>\n"), p[0], tt->data.active);
     }
         return true;
 

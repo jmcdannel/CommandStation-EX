@@ -38,6 +38,7 @@
 
 // If not already initialised, initialise I2C
 void I2CManagerClass::begin(void) {
+  //setTimeout(25000); // 25 millisecond timeout
   if (!_beginCompleted) {
     _beginCompleted = true;
     _initialise();
@@ -141,7 +142,7 @@ uint8_t I2CManagerClass::read(uint8_t address, uint8_t readBuffer[], uint8_t rea
  * Finish off request block by posting status, etc. (blocking operation)
  ***************************************************************************/
 uint8_t I2CManagerClass::finishRB(I2CRB *rb, uint8_t status) {
-  if (status == I2C_STATUS_OK && rb)
+  if ((status == I2C_STATUS_OK) && rb)
     status = rb->wait();
   return status;
 }

@@ -117,7 +117,7 @@ void WiThrottle::parse(RingStream * stream, byte * cmdx) {
     if (turnoutListHash != Turnout::turnoutlistHash) {
       StringFormatter::send(stream,F("PTL"));
       for(Turnout *tt=Turnout::firstTurnout;tt!=NULL;tt=tt->nextTurnout){
-          StringFormatter::send(stream,F("]\\[%d}|{%d}|{%c"), tt->data.header.id, tt->data.header.id, Turnout::isActive(tt->data.header.id)?'4':'2');
+          StringFormatter::send(stream,F("]\\[%d}|{%d}|{%c"), tt->data.id, tt->data.id, Turnout::isActive(tt->data.id)?'4':'2');
       }
       StringFormatter::send(stream,F("\n"));
       turnoutListHash = Turnout::turnoutlistHash; // keep a copy of hash for later comparison

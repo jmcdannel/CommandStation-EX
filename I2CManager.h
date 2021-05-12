@@ -20,6 +20,7 @@
 #ifndef I2CMANAGER_H
 #define I2CMANAGER_H
 
+#include <inttypes.h>
 #include "FSH.h"
 
 /* 
@@ -111,7 +112,9 @@
  */
 
 //#define I2C_USE_WIRE
+#ifndef I2C_NO_INTERRUPTS
 #define I2C_USE_INTERRUPTS
+#endif
 
 // Status codes for I2CRB structures.
 enum : uint8_t {

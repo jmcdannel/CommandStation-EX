@@ -43,7 +43,7 @@ enum unit8_t {
 
 void Turnout::printAll(Print *stream){
   for (Turnout *tt = Turnout::firstTurnout; tt != NULL; tt = tt->nextTurnout)
-    StringFormatter::send(stream, F("<H %d %d>\n"), tt->data.header.id, (tt->data.header.active)!=0);
+    StringFormatter::send(stream, F("<H %d %d>\n"), tt->data.id, tt->data.active);
 } // Turnout::printAll
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -54,29 +54,29 @@ void Turnout::printAll(Print *stream){
 //  <H id DCC address subAddress state>
 
 void Turnout::print(Print *stream){
-  uint8_t state = ((data.header.active) != 0);
-  uint8_t type = data.header.type;
+  uint8_t state = ((data.active) != 0);
+  uint8_t type = data.type;
   switch (type) {
-    #ifndef IO_MINIMALHAL
-    case TURNOUT_SERVO:
-      // Servo Turnout
-      StringFormatter::send(stream, F("<H %d SERVO %d %d %d %d %d>\n"), data.header.id, data.servoData.vpin, 
-        data.servoData.activePosition, data.servoData.inactivePosition, data.servoData.profile, state);
-      break;
-    #endif
     case TURNOUT_LCN:
       // LCN Turnout
-      StringFormatter::send(stream, F("<H %d LCN %d>\n"), data.header.id, state);
-      break;
-    case TURNOUT_VPIN:
-      // VPIN Digital output
-      StringFormatter::send(stream, F("<H %d VPIN %d %d>\n"), data.header.id, data.vpinData.vpin, state);
+      StringFormatter::send(stream, F("<H %d LCN %d>\n"), data.id, state);
       break;
     case TURNOUT_DCC:
       // DCC Turnout
-      StringFormatter::send(stream, F("<H %d DCC %d %d %d>\n"), data.header.id, 
+      StringFormatter::send(stream, F("<H %d DCC %d %d %d>\n"), data.id, 
         (((data.dccAccessoryData.address-1) >> 2)+1), ((data.dccAccessoryData.address-1) & 3), state);
       break;
+    case TURNOUT_VPIN:
+      // VPIN Digital output
+      StringFormatter::send(stream, F("<H %d VPIN %d %d>\n"), data.id, data.vpinData.vpin, state);
+      break;
+#ifndef IO_NO_HAL
+    case TURNOUT_SERVO:
+      // Servo Turnout
+      StringFormatter::send(stream, F("<H %d SERVO %d %d %d %d %d>\n"), data.id, data.servoData.vpin, 
+        data.servoData.activePosition, data.servoData.inactivePosition, data.servoData.profile, state);
+      break;
+#endif
     default:
       break;
   }
@@ -98,32 +98,6 @@ bool Turnout::activate(int n, bool state){
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Static function to check if the Turnout with ID 'n' is activated or not.
-// Returns false if turnout not found.
-
-bool Turnout::isActive(int n){
-  Turnout * tt=get(n);
-  if (!tt) return false;
-  return tt->isActive();
-}
-
-
-///////////////////////////////////////////////////////////////////////////////
-// Object function to check the status of Turnout is activated or not.
-
-bool Turnout::isActive() {
-  return data.header.active;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// Object function to set the status of Turnout to activated or not.
-// Does not send any commands, only modifies the tStatus flag.
-
-void Turnout::setActive(bool value) {
-  data.header.active = (value != 0);
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // Object method to activate or deactivate the Turnout.  
 
 // activate is virtual here so that it can be overridden by a non-DCC turnout mechanism
@@ -131,26 +105,28 @@ void Turnout::activate(bool state) {
 #ifdef EESTOREDEBUG
   DIAG(F("Turnout::activate(%d)"),state);
 #endif
-  if (data.header.type == TURNOUT_LCN) {
+  if (data.type == TURNOUT_LCN) {
       // A LCN turnout is transmitted to the LCN master.
-      LCN::send('T', data.header.id, state);
+      LCN::send('T', data.id, state);
       return;   // The tStatus will be updated by a message from the LCN master, later.
   } else {
-    data.header.active = state;
-    switch (data.header.type) {
+    data.active = state;
+    switch (data.type) {
+      case TURNOUT_DCC:
+        DCC::setAccessory((data.dccAccessoryData.address >> 2), (data.dccAccessoryData.address & 3), state);
+        break;
+#ifndef IO_NO_HAL
       case TURNOUT_SERVO:
         IODevice::write(data.servoData.vpin, state);
         break;
+#endif
       case TURNOUT_VPIN:
         IODevice::write(data.vpinData.vpin, state);
-        break;
-      case TURNOUT_DCC:
-        DCC::setAccessory((data.dccAccessoryData.address >> 2), (data.dccAccessoryData.address & 3), state);
         break;
     }
     // Save state if stored in EEPROM
     if (EEStore::eeStore->data.nTurnouts > 0 && num > 0) 
-      EEPROM.put(num, data.header.tStatus);
+      EEPROM.put(num, data.tStatus);
   }
 }
 
@@ -159,7 +135,7 @@ void Turnout::activate(bool state) {
 
 Turnout* Turnout::get(int n){
   Turnout *tt;
-  for(tt=firstTurnout;tt!=NULL && tt->data.header.id!=n;tt=tt->nextTurnout);
+  for(tt=firstTurnout;tt!=NULL && tt->data.id!=n;tt=tt->nextTurnout);
   return(tt);
 }
 
@@ -169,7 +145,7 @@ Turnout* Turnout::get(int n){
 bool Turnout::remove(int n){
   Turnout *tt,*pp=NULL;
 
-  for(tt=firstTurnout;tt!=NULL && tt->data.header.id!=n;pp=tt,tt=tt->nextTurnout);
+  for(tt=firstTurnout;tt!=NULL && tt->data.id!=n;pp=tt,tt=tt->nextTurnout);
 
   if(tt==NULL) return false;
   
@@ -196,25 +172,26 @@ void Turnout::load(){
     // Retrieve data
     EEPROM.get(EEStore::pointer(), data);
     
-    int lastKnownState = data.header.active;
-    switch (data.header.type) {
-#ifndef IO_MINIMALHAL
+    int lastKnownState = data.active;
+    switch (data.type) {
+      case TURNOUT_DCC:
+        tt=createDCC(data.id, ((data.dccAccessoryData.address-1)>>2)+1, (data.dccAccessoryData.address-1)&3); // DCC-based turnout
+        break;
+      case TURNOUT_LCN:
+        tt=createLCN(data.id, lastKnownState);
+        break;
+#ifndef IO_NO_HAL
       case TURNOUT_SERVO:
-        tt=createServo(data.header.id, data.servoData.vpin, 
+        tt=createServo(data.id, data.servoData.vpin, 
           data.servoData.activePosition, data.servoData.inactivePosition, data.servoData.profile, lastKnownState);
         break;
 #endif
       case TURNOUT_VPIN:
-        tt=createVpin(data.header.id, data.vpinData.vpin, lastKnownState);  // VPIN-based turnout
-        break;
-      case TURNOUT_DCC:
-        tt=createDCC(data.header.id, ((data.dccAccessoryData.address-1)>>2)+1, (data.dccAccessoryData.address-1)&3); // DCC-based turnout
-        break;
-      case TURNOUT_LCN:
-        tt=createLCN(data.header.id, lastKnownState);
+        tt=createVpin(data.id, data.vpinData.vpin, lastKnownState);  // VPIN-based turnout
         break;
     }
-    if (tt) tt->num = EEStore::pointer() + offsetof(TurnoutData, header.tStatus);  // Save pointer to tStatus byte within EEPROM
+    if (tt) tt->num = EEStore::pointer() + offsetof(TurnoutData, tStatus);  // Save pointer to tStatus byte within EEPROM
+    // TODO: Advance by the size of the individual turnout struct, not the largest one.
     EEStore::advance(sizeof(data));
 #ifdef EESTOREDEBUG
     print(tt);
@@ -235,28 +212,13 @@ void Turnout::store(){
 #ifdef EESTOREDEBUG
     print(tt);
 #endif
-    tt->num = EEStore::pointer() + offsetof(TurnoutData, header.tStatus); // Save pointer to tstatus byte within EEPROM
+    tt->num = EEStore::pointer() + offsetof(TurnoutData, tStatus); // Save pointer to tstatus byte within EEPROM
     EEPROM.put(EEStore::pointer(),tt->data);
+    // TODO: Advance by the size of the individual turnout struct, not the largest one.
     EEStore::advance(sizeof(tt->data));
     tt=tt->nextTurnout;
     EEStore::eeStore->data.nTurnouts++;
   }
-
-}
-///////////////////////////////////////////////////////////////////////////////
-// Static function for associating a Turnout id with a virtual pin in IODevice space.
-// The actual creation and configuration of the pin must be done elsewhere,
-// e.g. in mySetup.h during startup of the CS.
-
-Turnout *Turnout::createVpin(int id, VPIN vpin, uint8_t state){
-  if (vpin > VPIN_MAX) return NULL;
-  Turnout *tt=create(id);
-  if(!tt) return(tt);
-  tt->data.header.type = TURNOUT_VPIN;;
-  tt->data.header.active = (state != 0);
-  tt->data.vpinData.vpin = vpin;
-  IODevice::write(vpin, state);   // Set initial state of output.
-  return(tt);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -266,8 +228,8 @@ Turnout *Turnout::createDCC(int id, uint16_t add, uint8_t subAdd){
   if (add > 511 || subAdd > 3) return NULL;
   Turnout *tt=create(id);
   if (!tt) return(tt);
-  tt->data.header.type = TURNOUT_DCC;
-  tt->data.header.active = 0;
+  tt->data.type = TURNOUT_DCC;
+  tt->data.active = 0;
   tt->data.dccAccessoryData.address = ((add-1) << 2) + subAdd + 1;
   return(tt);
 }
@@ -278,15 +240,31 @@ Turnout *Turnout::createDCC(int id, uint16_t add, uint8_t subAdd){
 Turnout *Turnout::createLCN(int id, uint8_t state) {
   Turnout *tt=create(id);
   if (!tt) return(tt);
-  tt->data.header.type = TURNOUT_LCN;
-  tt->data.header.active = (state != 0);
+  tt->data.type = TURNOUT_LCN;
+  tt->data.active = (state != 0);
   return(tt);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// Static function for associating a Turnout id with a virtual pin in IODevice space.
+// The actual creation and configuration of the pin must be done elsewhere,
+// e.g. in mySetup.h during startup of the CS.
+
+Turnout *Turnout::createVpin(int id, VPIN vpin, uint8_t state){
+  if (vpin > VPIN_MAX) return NULL;
+  Turnout *tt=create(id);
+  if(!tt) return(tt);
+  tt->data.type = TURNOUT_VPIN;;
+  tt->data.active = (state != 0);
+  tt->data.vpinData.vpin = vpin;
+  IODevice::write(vpin, state);   // Set initial state of output.
+  return(tt);
+}
+
+#ifndef IO_NO_HAL
+///////////////////////////////////////////////////////////////////////////////
 // Method for creating a PCA9685 PWM Turnout.  
 
-#ifndef IO_MINIMALHAL
 Turnout *Turnout::createServo(int id, VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t state){
   if (activePosition > 511 || inactivePosition > 511 || profile > 4) return NULL;
   // Configure PWM interface device
@@ -297,8 +275,8 @@ Turnout *Turnout::createServo(int id, VPIN vpin, uint16_t activePosition, uint16
 
   Turnout *tt=create(id);
   if (!tt) return(tt);
-  tt->data.header.type = TURNOUT_SERVO;
-  tt->data.header.active = (state != 0);
+  tt->data.type = TURNOUT_SERVO;
+  tt->data.active = (state != 0);
   tt->data.servoData.vpin = vpin;
   tt->data.servoData.activePosition = activePosition;
   tt->data.servoData.inactivePosition = inactivePosition;
@@ -313,14 +291,20 @@ Turnout *Turnout::createServo(int id, VPIN vpin, uint16_t activePosition, uint16
 // and <T id VPIN pin>
 
 Turnout *Turnout::create(int id, int params, int16_t p[]) {
+#ifndef IO_NO_HAL
   if (p[0] == HASH_KEYWORD_SERVO) { // <T id SERVO n n n n>
-#ifndef IO_MINIMALHAL
     if (params == 5)
       return createServo(id, (VPIN)p[1], (uint16_t)p[2], (uint16_t)p[3], (uint8_t)p[4]);
     else  
-#endif
       return NULL;
   } else 
+#endif
+  if (p[0] == HASH_KEYWORD_VPIN) { // <T id VPIN n>
+    if (params==2)
+      return createVpin(id, p[1]);
+    else
+      return NULL;
+  } else
   if (p[0]==HASH_KEYWORD_DCC) {
     if (params==3 && p[1]>0 && p[1]<=512 && p[2]>=0 && p[2]<4)  // <T id DCC n n>
       return createDCC(id, p[1], p[2]);
@@ -328,19 +312,15 @@ Turnout *Turnout::create(int id, int params, int16_t p[]) {
       return createDCC(id, (p[1]-1)/4+1, (p[1]-1)%4);
     else
       return NULL;
-  } else if (p[0] == HASH_KEYWORD_VPIN) { // <T id VPIN n>
-    if (params==2)
-      return createVpin(id, p[1]);
-    else
-      return NULL;
   } else if (params==2) { // <T id n n> for DCC or LCN
     return createDCC(id, p[0], p[1]);
   } 
-#ifndef IO_MINIMALHAL
+#ifndef IO_NO_HAL
   else if (params==3) { // legacy <T id n n n> for Servo
     return createServo(id, (VPIN)p[0], (uint16_t)p[1], (uint16_t)p[2]);
   }
 #endif
+
   return NULL;
 }
 
@@ -355,7 +335,7 @@ Turnout *Turnout::create(int id){
      if (!tt) return (tt);
      tt->nextTurnout=firstTurnout;
      firstTurnout=tt;
-     tt->data.header.id=id;
+     tt->data.id=id;
   }
   tt->num = 0; // Make sure turnout doesn't get written to EEPROM until store() command.
   turnoutlistHash++;

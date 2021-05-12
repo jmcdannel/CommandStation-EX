@@ -43,7 +43,7 @@ MCP23008::MCP23008(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin) {
   I2CManager.begin();
   I2CManager.setClock(1000000);  // Supports fast clock
   if (I2CManager.exists(_I2CAddress))
-    DIAG(F("MCP23008 configured Vpins:%d-%d I2C:%x"), _firstVpin, _firstVpin+_nPins-1, _I2CAddress);
+    DIAG(F("MCP23008 I2C:%x configured Vpins:%d-%d"), _I2CAddress, _firstVpin, _firstVpin+_nPins-1);
   _portDirection = 0xff; // Defaults to Input mode
   _portPullup = 0xff; // Defaults to pullup enabled
   _portInputState = 0x00; 
@@ -71,7 +71,7 @@ bool MCP23008::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, 
   bool pullup = params[0];
   int pin = vpin - _firstVpin;
   #ifdef DIAG_IO
-  DIAG(F("MCP23008 _configurePullup Pin:%d Val:%d"), vpin, pullup);
+  DIAG(F("MCP23008 I2C:x%x Pin:%d Val:%d"), _I2CAddress, pin, pullup);
   #endif
   uint8_t mask = 1 << pin;
   if (pullup) 
@@ -89,7 +89,7 @@ bool MCP23008::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, 
 void MCP23008::_write(VPIN vpin, int value) {
   int pin = vpin -_firstVpin;
   #ifdef DIAG_IO
-  DIAG(F("MCP23008 Write I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress, (int)vpin, value);
+  DIAG(F("MCP23008 I2C:x%x Write Pin:%d Value:%d"), _I2CAddress, pin, value);
   #endif
   uint8_t mask = 1 << pin;
   if (value) 
@@ -144,7 +144,7 @@ void MCP23008::_loop(unsigned long currentMicros) {
     uint8_t differences = previousState ^ _portInputState;
     #if DIAG_IO
     if (differences)
-      DIAG(F("MCP23008 Port Change I2C:x%x Value:x%x"), (int)_I2CAddress, _portInputState);
+      DIAG(F("MCP23008 I2C:x%x Port Change:x%x"), (int)_I2CAddress, _portInputState);
     #else
       (void) differences;  // Suppress compiler warning.
     #endif
@@ -162,8 +162,8 @@ void MCP23008::_loop(unsigned long currentMicros) {
 }
 
 void MCP23008::_display() {
-  DIAG(F("MCP23008 Vpins:%d-%d I2C:x%x"), (int)_firstVpin, 
-    (int)_firstVpin+_nPins-1, (int)_I2CAddress);
+  DIAG(F("MCP23008 I2C:x%x Vpins:%d-%d"), _I2CAddress, (int)_firstVpin, 
+    (int)_firstVpin+_nPins-1);
 }
 
 // Helper function to write a register

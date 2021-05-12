@@ -20,12 +20,12 @@
 #ifndef iodevice_h
 #define iodevice_h
 
-// Define symbol to enable diagnostic output
+// Define symbol DIAG_IO to enable diagnostic output
 //#define DIAG_IO Y
 
-// Define symbol IO_MINIMALHAL to reduce FLASH footprint of IODevice HAL subsystem
-#if defined(ARDUINO_AVR_NANO) || defined(ARDUINO_AVR_UNO)
-#define IO_MINIMALHAL
+// Define symbol IO_NO_HAL to reduce FLASH footpring when HAL features not required
+#if defined(ARDUINO_AVR_NANO) || defined(ARDUINO_AVR_UNO) 
+#define IO_NO_HAL
 #endif
 
 #include "DIAG.h"
@@ -60,6 +60,14 @@ public:
     CONFIGURE_OUTPUT = 3,
   } ConfigTypeEnum;
 
+  typedef enum : uint8_t {
+    DEVSTATE_DORMANT = 0,
+    DEVSTATE_PROBING = 1,
+    DEVSTATE_INITIALISING = 2,
+    DEVSTATE_NORMAL = 3,
+    DEVSTATE_SCANNING = 4,
+  } DeviceStateEnum;
+
   // Static functions to find the device and invoke its member functions
 
   // begin is invoked to create any standard IODevice subclass instances
@@ -90,11 +98,7 @@ public:
 
   // Enable shared interrupt on specified pin for GPIO extender modules.  The extender module
   // should pull down this pin when requesting a scan.  The pin may be shared by multiple modules.
-  void setGPIOInterruptPin(int16_t pinNumber) {
-    if (pinNumber >= 0)
-      pinMode(pinNumber, INPUT_PULLUP);
-    _gpioInterruptPin = pinNumber;
-  }
+  void setGPIOInterruptPin(int16_t pinNumber);
 
   // Method to add a notification.  it is the caller's responsibility to save the return value
   // and invoke the event handler associate with it.  Example:
@@ -107,11 +111,7 @@ public:
   //      if (nextEv) nextEv(pin, value);
   //     }
   //
-  static IONotifyStateChangeCallback *registerInputChangeNotification(IONotifyStateChangeCallback *callback) {
-    IONotifyStateChangeCallback *previousHead = _notifyCallbackChain;
-    _notifyCallbackChain = callback;
-    return previousHead;
-  }
+  static IONotifyStateChangeCallback *registerInputChangeNotification(IONotifyStateChangeCallback *callback);
   
 protected:
   
@@ -177,6 +177,8 @@ protected:
   // Notification of change
   static IONotifyStateChangeCallback *_notifyCallbackChain;
 
+  DeviceStateEnum _deviceState = DEVSTATE_DORMANT;
+
 private:
   // Method to check whether the vpin corresponds to this device
   bool owns(VPIN vpin);
@@ -187,6 +189,8 @@ private:
   static IODevice *_firstDevice;
 
   static IODevice *_nextLoopDevice;
+
+  
 };
 
 
@@ -248,7 +252,7 @@ private:
   unsigned long _lastLoopEntry = 0;
 
   I2CRB requestBlock;
-  uint8_t inputBuffer[1];  // One eight-bit register.
+  uint8_t inputBuffer[1]={0xff};  // One eight-bit register.
   uint8_t outputBuffer[1]; // Register number
   bool scanActive = false;
 };
@@ -294,7 +298,7 @@ private:
   bool scanActive = false;
 
   I2CRB requestBlock;
-  uint8_t inputBuffer[2];  // Two eight-bit registers.
+  uint8_t inputBuffer[2]={0xff,0xff};  // Two eight-bit registers.
   uint8_t outputBuffer[1]; // Register number
 
   enum {
@@ -350,7 +354,7 @@ private:
   I2CRB requestBlock;
   int8_t currentPollDevice = -1;
   uint8_t outputBuffer[1]; // Register number
-  uint8_t inputBuffer[1];  // One 8-bit register value
+  uint8_t inputBuffer[1] = {0xff};  // One 8-bit register value
 
   enum {
     // Register definitions for MCP23008

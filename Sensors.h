@@ -74,11 +74,10 @@ public:
                                         // Max value is 64
   static bool readSignalValuePhase;
  
-#ifndef IO_MINIMALHAL
   static void inputChangeCallback(VPIN vpin, int state);
   static IONotifyStateChangeCallback *nextInputChangeCallback;
   static bool inputChangeCallbackRegistered;
-#endif
+  
 }; // Sensor
 
 #endif

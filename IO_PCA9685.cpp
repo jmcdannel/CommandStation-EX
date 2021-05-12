@@ -74,7 +74,7 @@ PCA9685::PCA9685(VPIN firstVpin, int nPins, uint8_t I2CAddress) {
 
   // Initialise I/O module(s) here.
     if (I2CManager.exists(_I2CAddress))
-      DIAG(F("PCA9685 configured Vpins:%d-%d I2C:%x"), _firstVpin, _firstVpin+_nPins-1, _I2CAddress);
+      DIAG(F("PCA9685 I2C:%x configured Vpins:%d-%d"), _I2CAddress, _firstVpin, _firstVpin+_nPins-1);
     writeRegister(_I2CAddress, PCA9685_MODE1, MODE1_SLEEP | MODE1_AI);    
     writeRegister(_I2CAddress, PCA9685_PRESCALE, PRESCALE_50HZ);   // 50Hz clock, 20ms pulse period.
     writeRegister(_I2CAddress, PCA9685_MODE1, MODE1_AI);
@@ -89,12 +89,16 @@ void PCA9685::_begin() {
 
 // Device-specific write function.  This device is PWM, and the value written
 // can be anything in the range of 0-4095 to get between 0% and 100% mark to period
-// ratio.
+// ratio.  However, servos normally operate over a range of 200-400 or thereabouts.
+// Zero is also valid, and will turn off the servo motor, reducing power consumption
+// and servo buzz, and leaving the servo at its current position.
+// Therefore, if we get a value of '1' being written, something's probably wrong.
 void PCA9685::_write(VPIN vpin, int value) {
   int pin = vpin-_firstVpin;
   #ifdef DIAG_IO
-  DIAG(F("PCA9685 Write Vpin:%d I2C:x%x/%d Value:%d"), (int)vpin, (int)_I2CAddress, pin, value);
+  DIAG(F("PCA9685 I2C:x%x Write Pin:%d Value:%d"), _I2CAddress, pin, value);
   #endif
+  if (value == 1) return;  // Ignore '1' as it isn't a valid value for servos.
   // Wait for previous request to complete
   requestBlock.wait();
   // Set up new request.
@@ -108,8 +112,8 @@ void PCA9685::_write(VPIN vpin, int value) {
 
 // Display details of this device.
 void PCA9685::_display() {
-  DIAG(F("PCA9685 Vpins:%d-%d I2C:x%x"), (int)_firstVpin, 
-    (int)_firstVpin+_nPins-1, (int)_I2CAddress);
+  DIAG(F("PCA9685 I2C:x%x Vpins:%d-%d"), _I2CAddress, (int)_firstVpin, 
+    (int)_firstVpin+_nPins-1);
 }
 
 // Internal helper function for this device

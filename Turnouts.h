@@ -36,17 +36,28 @@
 const byte STATUS_ACTIVE=0x80; // Flag as activated in tStatus field
 const byte STATUS_TYPE = 0x7f;  // Mask for turnout type in tStatus field
 
+//  The struct 'header' is used to determine the length of the
+//  overlaid data so must be at least as long as the anonymous fields it
+//  is overlaid with
 struct TurnoutData {
-  struct {
-    int id;
-    union {
-      uint8_t tStatus;
-      struct {
-        unsigned int active: 1;
-        unsigned int type: 5;
+  union {
+    struct {
+      int id;
+      uint8_t t_status;
+      uint8_t _dummy;
+    } header;
+    struct {
+      int id;
+      union {
+        uint8_t tStatus;
+        struct {
+          unsigned int active: 1;
+          unsigned int type: 5;
+          unsigned int :2;
+        };
       };
     };
-  } header;
+  };
   union {
     struct {
       // DCC address (Address in bits 15-2, subaddress in bits 1-0
@@ -55,8 +66,8 @@ struct TurnoutData {
     } dccAccessoryData;
     struct {
       VPIN vpin;
-      uint16_t activePosition;
-      uint16_t inactivePosition;
+      uint16_t activePosition : 12;
+      uint16_t inactivePosition : 12;
       uint8_t profile;
     } servoData;
     struct {
@@ -80,9 +91,7 @@ public:
   static void setActive(int n, bool state);
   static void load();
   static void store();
-#ifndef IO_MINIMALHAL
   static Turnout *createServo(int id , VPIN vpin , uint16_t activeAngle, uint16_t inactiveAngle, uint8_t profile=1, uint8_t initialState=0);
-#endif
   static Turnout *createVpin(int id, VPIN vpin, uint8_t initialState=0);
   static Turnout *createDCC(int id, uint16_t address, uint8_t subAddress);
   static Turnout *createLCN(int id, uint8_t initialState=0);

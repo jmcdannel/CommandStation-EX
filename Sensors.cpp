@@ -87,12 +87,11 @@ decide to ignore the <q ID> return and only react to <Q ID> triggers.
 
 void Sensor::checkAll(Print *stream){
   uint16_t sensorCount = 0;
-#ifndef IO_MINIMALHAL
+
   // Register the event handler ONCE!
   if (!inputChangeCallbackRegistered)
     nextInputChangeCallback = IODevice::registerInputChangeNotification(inputChangeCallback);
   inputChangeCallbackRegistered = true;
-#endif
 
   if (firstSensor == NULL) return;  // No sensors to be scanned
   if (readingSensor == NULL) { 
@@ -110,15 +109,10 @@ void Sensor::checkAll(Print *stream){
   bool pause = false;
   while (readingSensor != NULL && !pause) {
 
-#ifndef IO_MINIMALHAL
     if (readingSensor == firstSensor) 
       readSignalValuePhase = false;
     else if (readingSensor == firstScanSensor)
       readSignalValuePhase = true;
-#else
-    // All sensor inputs are scanned in this mode.
-    readSignalValuePhase = true;
-#endif
 
     // Where the sensor is attached to a pin, read pin status and invert.  For sources such as LCN,
     // which don't have an input pin to read, the LCN class calls setState() to update inputState when
@@ -168,7 +162,6 @@ void Sensor::checkAll(Print *stream){
 
 } // Sensor::checkAll
 
-#ifndef IO_MINIMALHAL
 // Callback from HAL (IODevice class) when a digital input change is recognised.
 // Updates the inputState field, which is subsequently scanned for changes in the checkAll 
 // method.
@@ -183,7 +176,6 @@ void Sensor::inputChangeCallback(VPIN vpin, int state) {
   // Call next registered callback function
   if (nextInputChangeCallback) nextInputChangeCallback(vpin, state);
 }
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -325,7 +317,5 @@ Sensor *Sensor::readingSensor=NULL;
 unsigned long Sensor::lastReadCycle=0;
 bool Sensor::readSignalValuePhase = false;
 
-#ifndef IO_MINIMALHAL
 IONotifyStateChangeCallback *Sensor::nextInputChangeCallback = 0;
 bool Sensor::inputChangeCallbackRegistered = false;
-#endif

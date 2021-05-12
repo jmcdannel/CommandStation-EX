@@ -27,8 +27,7 @@ PCF8574::PCF8574(VPIN vpin, int nPins, uint8_t I2CAddress) {
   _nPins = min(nPins, 8);
   _I2CAddress = I2CAddress;
 
-  // Initialise structure for reading input register
-  requestBlock.setReadParams(I2CAddress, inputBuffer, sizeof(inputBuffer));
+  requestBlock.setWriteParams(_I2CAddress, NULL, 0);
 
   I2CManager.begin();
   // According to spec, the PCF8574 operates at 100kHz max.  However, I've not had
@@ -36,7 +35,7 @@ PCF8574::PCF8574(VPIN vpin, int nPins, uint8_t I2CAddress) {
   I2CManager.setClock(100000);  
 
   if (I2CManager.exists(_I2CAddress))
-    DIAG(F("PCF8574 created Vpins:%d-%d I2C:%x"), _firstVpin, _firstVpin+nPins-1, _I2CAddress);
+    DIAG(F("PCF8574 I2C:x%x configured Vpins:%d-%d"), _I2CAddress, _firstVpin, _firstVpin+nPins-1);
   _portInputState = 0x00;
   _portOutputState = 0x00; // Defaults to output zero.
 }
@@ -67,7 +66,7 @@ bool PCF8574::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, i
 void PCF8574::_write(VPIN vpin, int value) {
   int pin = vpin -_firstVpin;
   #ifdef DIAG_IO
-  DIAG(F("PCF8574::_write I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress, (int)vpin, value);
+  DIAG(F("PCF8574 Write I2C:x%x Pin:%d Value:%d"), _I2CAddress, (int)vpin, value);
   #endif
   uint8_t mask = 1 << pin;
   if (value) 
@@ -87,11 +86,9 @@ int PCF8574::_read(VPIN vpin) {
   if (!(_portOutputState & mask)) {
     // Pin currently driven to zero, so set to one first and then read value
     _portOutputState |= mask;
-    uint8_t inBuffer;
-    uint8_t status = I2CManager.read(_I2CAddress, &inBuffer, 1, &_portOutputState, 1);
+    uint8_t status = I2CManager.read(_I2CAddress, &_portInputState, 1, &_portOutputState, 1);
     if (status != I2C_STATUS_OK)
-      inBuffer = 0xff;  // Return ones if can't read
-    _portInputState = inBuffer;
+      _portInputState = 0xff;  // Return ones if can't read
   }
   if (_portInputState & mask) 
     result = 1;
@@ -102,32 +99,67 @@ int PCF8574::_read(VPIN vpin) {
 
 // Loop function to do background scanning of the input port.
 void PCF8574::_loop(unsigned long currentMicros) {
+  uint8_t previousState, differences;
   if (requestBlock.isBusy()) return;  // Do nothing if a port read is in progress
-  if (scanActive) {
-    uint8_t previousState = _portInputState;
-    // Scan in progress and last request completed, so retrieve port status from buffer
-    if (requestBlock.status == I2C_STATUS_OK) 
-      _portInputState = inputBuffer[0];
-    else
-      _portInputState = 0xff;
-    scanActive = false;
-    #ifdef DIAG_IO
-    uint8_t differences = _portInputState ^ previousState;
-    if (differences)
-      DIAG(F("PCF8574 Port Change I2C:x%x Value x%x"), (int)_I2CAddress, _portInputState);
-    #else
-    (void)previousState; // Suppress compiler warning.
-    #endif
-  } else if (currentMicros - _lastLoopEntry > _portTickTime) {
-    scanActive = true;
-    // Initiate read of module input register
-    I2CManager.queueRequest(&requestBlock);
+  uint8_t status = requestBlock.status;
+  switch (_deviceState) {
+    case DEVSTATE_SCANNING:
+      previousState = _portInputState;
+      // Scan in progress and last request completed, so retrieve port status from buffer
+      if (status == I2C_STATUS_OK) {
+        _portInputState = inputBuffer[0];
+        _deviceState = DEVSTATE_NORMAL;
+      } else {
+        _portInputState = 0xff;
+        DIAG(F("PCF8574 I2C:x%x Error %d"), _I2CAddress, status);
+        _deviceState = DEVSTATE_DORMANT;
+      }
+      #ifdef DIAG_IO
+      differences = _portInputState ^ previousState;
+      if (differences)
+        DIAG(F("PCF8574 I2C:x%x Port Change:x%x"), _I2CAddress, (int)_portInputState);
+      #else
+      (void)previousState; (void)differences; // Suppress compiler warnings.
+      #endif
+      break;
+    case DEVSTATE_PROBING:
+      // Probe completed.
+      if (status == I2C_STATUS_OK) {
+        DIAG(F("PCF8574 I2C:x%x Active"), (int)_I2CAddress);
+        // Initialise by writing the current output and pullup states.
+        I2CManager.write(_I2CAddress, &_portOutputState, 1);
+        // Then set up ready for normal scans
+        requestBlock.setReadParams(_I2CAddress, inputBuffer, sizeof(inputBuffer));
+        _deviceState = DEVSTATE_NORMAL;
+      } else
+        _deviceState = DEVSTATE_DORMANT;
+      break;
+    default:
+      break;
+  }
+
+  if (currentMicros - _lastLoopEntry > _portTickTime) {
+    switch (_deviceState) {
+      case DEVSTATE_NORMAL:
+        // Initiate read of module input register
+        I2CManager.queueRequest(&requestBlock);
+        _deviceState = DEVSTATE_SCANNING;
+        break;
+      case DEVSTATE_DORMANT:
+        // Initiate probe
+        requestBlock.setWriteParams(_I2CAddress, NULL, 0);
+        I2CManager.queueRequest(&requestBlock);
+        _deviceState = DEVSTATE_PROBING;
+        break;
+      default:
+        break;
+    }
     _lastLoopEntry = currentMicros;
   }
 }
 
 void PCF8574::_display() {
-  DIAG(F("PCF8574 VPins:%d-%d I2C:x%x"), (int)_firstVpin, 
-    (int)_firstVpin+_nPins-1, (int)_I2CAddress);
+  DIAG(F("PCF8574 I2C:x%x VPins:%d-%d"), _I2CAddress, (int)_firstVpin, 
+    (int)_firstVpin+_nPins-1);
 }
 

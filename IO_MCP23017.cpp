@@ -38,24 +38,13 @@ MCP23017::MCP23017(VPIN firstVpin, int nPins, uint8_t I2CAddress, int interruptP
   if (_gpioInterruptPin >= 0)
     pinMode(_gpioInterruptPin, INPUT_PULLUP);
 
-  // Initialise structure for reading GPIO registers
-  outputBuffer[0] = REG_GPIOA;
-  requestBlock.setRequestParams(_I2CAddress, inputBuffer, sizeof(inputBuffer), outputBuffer, sizeof(outputBuffer));
-
   I2CManager.begin();
   I2CManager.setClock(1000000);
   if (I2CManager.exists(I2CAddress))
-    DIAG(F("MCP23017 configured Vpins:%d-%d I2C:x%x"), _firstVpin, _firstVpin+nPins-1, _I2CAddress);
+    DIAG(F("MCP23017 I2C:x%x configured Vpins:%d-%d"), _I2CAddress, _firstVpin, _firstVpin+nPins-1);
   _portMode = 0xFFFF; // Default to input mode
   _portPullup = 0xFFFF; // Default to pullup enabled
   _currentPortState = 0x0000;
-  // Initialise device registers (in case it's warm-starting)
-  // IOCON is set MIRROR=1, ODR=1 (open drain shared interrupt pin)
-  writeRegister(I2CAddress, REG_IOCON, 0x44);
-  writeRegister2(I2CAddress, REG_GPIOA, _currentPortState & 0xff, _currentPortState>>8);
-  writeRegister2(I2CAddress, REG_IODIRA, _portMode & 0xff, _portMode>>8);
-  writeRegister2(I2CAddress, REG_GPPUA, _portPullup & 0xff, _portPullup>>8);
-  writeRegister2(I2CAddress, REG_GPINTENA, 0xff, 0xff);  // Enable interrupt mode
 }
 
 // Static create() method
@@ -75,7 +64,7 @@ bool MCP23017::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, 
   bool pullup = params[0];
   int pin = vpin - _firstVpin;
   #ifdef DIAG_IO
-  DIAG(F("MCP23017::_configurePullup Pin:%d Val:%d"), vpin, pullup);
+  DIAG(F("MCP23017 I2C:x%x Config Pin:%d Val:%d"), _I2CAddress, pin, pullup);
   #endif
   uint16_t mask = 1 << pin;
   if (pullup)
@@ -95,7 +84,7 @@ bool MCP23017::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, 
 // Device-specific write function.
 void MCP23017::_write(VPIN vpin, int value) {
   #ifdef DIAG_IO
-  //DIAG(F("MCP23017 Write I2C:x%x Pin:%d Value:%d"), (int)_I2CAddress+deviceIndex, (int)pin, value);
+  //DIAG(F("MCP23017 I2C:x%x Write Pin:%d Value:%d"), (int)_I2CAddress+deviceIndex, (int)pin, value);
   #endif
   int pin = vpin - _firstVpin;
   uint16_t mask = 1 << pin;
@@ -124,11 +113,7 @@ void MCP23017::_write(VPIN vpin, int value) {
 // Function called to check whether callback notification is supported by this pin.
 bool MCP23017::_hasCallback(VPIN vpin) {
   (void) vpin;  // suppress compiler warning.
-#ifdef IO_MINIMALHAL
-  return false;  // Turn off callback notification
-#else
   return true;   // Enable callback notification to reduce need to poll input state.
-#endif
 }
 
 // Device-specific read function.  If pin was previously in write mode, then set read mode and read
@@ -157,25 +142,29 @@ int MCP23017::_read(VPIN vpin) {
 // Loop function to read and refresh port states
 void MCP23017::_loop(unsigned long currentMicros) {
   uint16_t inputStates;
+
   if (requestBlock.isBusy()) return;  // Do nothing if a port read is in progress
-  if (scanActive) {
-    scanActive = false;
+  if (_deviceState == DEVSTATE_SCANNING) {  // Waiting for scan
     // Scan in progress and last request completed, so retrieve port status from buffer
     if (requestBlock.status == I2C_STATUS_OK)  {
       inputStates = ((uint16_t)inputBuffer[1] << 8) | inputBuffer[0];
-    } else
+      _deviceState = DEVSTATE_NORMAL;
+    } else {
       inputStates = 0xffff;
+      DIAG(F("MCP23017 I2C:x%x Error:%d"), _I2CAddress, requestBlock.status);
+      _deviceState = DEVSTATE_DORMANT;
+    }
     uint16_t differences = inputStates ^ _currentPortState;
-     // Save input states
+    // Save input states
     _currentPortState = inputStates;
+
     #if DIAG_IO
     if (differences)
-      DIAG(F("MCP23017 Port Change I2C:x%x Value:x%x"), (int)_I2CAddress, _currentPortState);
+      DIAG(F("MCP23017 I2C:x%x Port Change:x%x"), (int)_I2CAddress, _currentPortState);
     #else
       (void)differences;  // Suppress compiler warning
     #endif
 
-#ifndef IO_MINIMALHAL
     // Scan for changes in input states and invoke callback
     if (differences && (_notifyCallbackChain != NULL)) {
       // Scan for differences bit by bit
@@ -188,16 +177,45 @@ void MCP23017::_loop(unsigned long currentMicros) {
         mask <<= 1;
       }
     }
-#endif
+  } else if (_deviceState == DEVSTATE_PROBING) { // Waiting for probe
+    // Probe completed
+    if (requestBlock.status == I2C_STATUS_OK) {
+      DIAG(F("MCP23017 I2C:x%x Active"), _I2CAddress);
+      // OK - move to next state
+      _deviceState = DEVSTATE_INITIALISING;
+      // Initialise device registers
+      // IOCON is set MIRROR=1, ODR=1 (open drain shared interrupt pin)
+      writeRegister(_I2CAddress, REG_IOCON, 0x44);
+      writeRegister2(_I2CAddress, REG_GPIOA, _currentPortState & 0xff, _currentPortState>>8);
+      writeRegister2(_I2CAddress, REG_IODIRA, _portMode & 0xff, _portMode>>8);
+      writeRegister2(_I2CAddress, REG_GPPUA, _portPullup & 0xff, _portPullup>>8);
+      writeRegister2(_I2CAddress, REG_GPINTENA, 0xff, 0xff);  // Enable interrupt mode
 
-  } else if (currentMicros - _lastLoopEntry > _portTickTime) {
-    if (_gpioInterruptPin < 0 || digitalRead(_gpioInterruptPin) == 0) {
-      // A cyclic scan is due, and either a GPIO device has pulled down its interrupt pin to
-      //  signal something has changed or GPIO device interrupts are not configured
-      scanActive = true;  // Starting new scan.
-      // Initiate read
+      // Initialise structure for reading GPIO registers
+      outputBuffer[0] = REG_GPIOA;
+      requestBlock.setRequestParams(_I2CAddress, inputBuffer, sizeof(inputBuffer), outputBuffer, sizeof(outputBuffer));
+
+      _deviceState = DEVSTATE_NORMAL;
+    } else 
+      _deviceState = DEVSTATE_DORMANT;
+  }
+
+  if (currentMicros - _lastLoopEntry > _portTickTime) {
+    if (_deviceState == DEVSTATE_NORMAL) {
+      // Normal scan mode
+      if (_gpioInterruptPin < 0 || digitalRead(_gpioInterruptPin) == 0) {
+        // A cyclic scan is due, and either a GPIO device has pulled down its interrupt pin to
+        //  signal something has changed or GPIO device interrupts are not configured
+        // Initiate read
+        I2CManager.queueRequest(&requestBlock);
+        _deviceState = DEVSTATE_SCANNING;
+      }
+    } else if (_deviceState == DEVSTATE_DORMANT) {
+      // Issue probe
+      requestBlock.setWriteParams(_I2CAddress, NULL, 0);
       I2CManager.queueRequest(&requestBlock);
-    }
+      _deviceState = DEVSTATE_PROBING;
+    } 
     _lastLoopEntry = currentMicros;
   }
 }
@@ -224,6 +242,6 @@ static uint16_t readRegister2(uint8_t address, uint8_t reg) {
 
 // Display details of this device.
 void MCP23017::_display() {
-  DIAG(F("MCP23017 Vpins:%d-%d I2C:x%x"), (int)_firstVpin, 
-    _firstVpin+_nPins-1, (int)_I2CAddress);
+  DIAG(F("MCP23017 I2C:x%x Vpins:%d-%d"), _I2CAddress, (int)_firstVpin, 
+    _firstVpin+_nPins-1);
 }

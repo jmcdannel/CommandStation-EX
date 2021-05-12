@@ -146,7 +146,7 @@ void I2CManagerClass::I2C_handleInterrupt() {
       }
       /* fallthrough */
     case TWI_MRX_ADR_ACK:      // SLA+R has been sent and ACK received
-      if (bytesToReceive == 1) {
+      if (bytesToReceive <= 1) {
         TWCR = (1<<TWEN)|ENABLE_TWI_INTERRUPT|(1<<TWINT); // Send NACK after next reception
       } else {
         // send ack

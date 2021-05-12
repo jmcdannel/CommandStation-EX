@@ -35,24 +35,22 @@
 // Static functions
 
 // Static method to initialise the IODevice subsystem.  
+
+#if !defined(IO_NO_HAL)
+
 // Create any standard device instances that may be required, such as the Arduino pins 
 // and PCA9685.
 void IODevice::begin() {
   // Initialise the IO subsystem
   ArduinoPins::create(2, 48);  // Reserve pins numbered 2-49 for direct access
-#if !defined(IO_MINIMALHAL)
   // Predefine two PCA9685 modules 0x40-0x41
   // Allocates 32 pins 100-131
   PCA9685::create(100, 16, 0x40);
   PCA9685::create(116, 16, 0x41);
-  // Predefine one PCF8574 module 0x23
-  // Allocates 8 pins 132-139
-  PCF8574::create(132, 8, 0x23);
   // Predefine two MCP23017 module 0x20/0x21
   // Allocates 32 pins 164-195
   MCP23017::create(164, 16, 0x20);
   MCP23017::create(180, 16, 0x21);
-#endif
 }
 
 // Overarching static loop() method for the IODevice subsystem.  Works through the
@@ -69,7 +67,7 @@ void IODevice::loop() {
   _nextLoopDevice = _nextLoopDevice->_nextDevice;
   
   // Report loop time if diags enabled
-#if defined(DIAG_IO)
+#if defined(DIAG_LOOPTIMES)
   static unsigned long lastMicros = 0;
   static unsigned long maxElapsed = 0;
   static unsigned long lastOutputTime = 0;
@@ -167,6 +165,19 @@ void IODevice::write(VPIN vpin, int value) {
 #endif
 }
 
+void IODevice::setGPIOInterruptPin(int16_t pinNumber) {
+  if (pinNumber >= 0)
+    pinMode(pinNumber, INPUT_PULLUP);
+  _gpioInterruptPin = pinNumber;
+}
+
+IONotifyStateChangeCallback *IODevice::registerInputChangeNotification(IONotifyStateChangeCallback *callback) {
+  IONotifyStateChangeCallback *previousHead = _notifyCallbackChain;
+  _notifyCallbackChain = callback;
+  return previousHead;
+}
+
+
 // Private helper function to add a device to the chain of devices.
 void IODevice::addDevice(IODevice *newDevice) {
   // Link new object to the start of chain.  Thereby,
@@ -241,6 +252,49 @@ IODevice *IODevice::_firstDevice = 0;
 
 // Reference to next device to be called on _loop() method.
 IODevice *IODevice::_nextLoopDevice = 0;
+
+#else // !defined(IO_NO_HAL)
+
+// Minimal implementations of public HAL interface, to support Arduino pin I/O and nothing more.
+
+void IODevice::begin() { DIAG(F("NO HAL CONFIGURED!")); }
+bool IODevice::configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) {
+  (void)vpin; (void)paramCount; (void)params; // Avoid compiler warnings
+  if (configType == CONFIGURE_INPUT || configType == CONFIGURE_OUTPUT) 
+    return true;
+  else
+    return false;
+}
+void IODevice::write(VPIN vpin, int value) {
+  pinMode(vpin, OUTPUT);
+  digitalWrite(vpin, value);
+}
+bool IODevice::hasCallback(VPIN vpin) { 
+  (void)vpin;  // Avoid compiler warnings
+  return false; 
+}
+bool IODevice::read(VPIN vpin) { 
+  pinMode(vpin, INPUT_PULLUP);
+  return digitalRead(vpin);
+}
+void IODevice::loop() {}
+void IODevice::DumpAll() {
+  DIAG(F("NO HAL CONFIGURED!"));
+}
+bool IODevice::exists(VPIN vpin) { return (vpin > 2 && vpin < 49); }
+void IODevice::remove(VPIN vpin) {
+  (void)vpin;  // Avoid compiler warnings
+}
+void IODevice::setGPIOInterruptPin(int16_t pinNumber) {
+  (void) pinNumber; // Avoid compiler warning
+}
+IONotifyStateChangeCallback *IODevice::registerInputChangeNotification(IONotifyStateChangeCallback *callback) {
+  (void)callback;  // Avoid compiler warning
+  return NULL;
+}
+
+#endif // IO_NO_HAL
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
