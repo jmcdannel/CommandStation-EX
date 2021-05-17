@@ -10,3 +10,4 @@ config.h
 .vscode/extensions.json
 mySetup.h
 myAutomation.h
+myFilter.cpp
