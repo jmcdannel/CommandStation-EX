@@ -130,7 +130,7 @@ void DCC::setFunctionInternal(int cab, byte byte1, byte byte2) {
   if (byte1!=0) b[nB++] = byte1;
   b[nB++] = byte2;
 
-  DCCWaveform::mainTrack.schedulePacket(b, nB, 3);     // send packet 3 times
+  DCCWaveform::mainTrack.schedulePacket(b, nB, 0);
 }
 
 uint8_t DCC::getThrottleSpeed(int cab) {
@@ -402,10 +402,6 @@ const ackOp FLASH READ_CV_PROG[] = {
 
 const ackOp FLASH LOCO_ID_PROG[] = {
       BASELINE,
-      SETCV, (ackOp)1,   
-      SETBIT, (ackOp)7,
-      V0,WACK,NAKFAIL, // test CV 1 bit 7 is a zero... NAK means no loco found
-
       SETCV, (ackOp)19,     // CV 19 is consist setting
       SETBYTE, (ackOp)0,    
       VB, WACK, ITSKIP,     // ignore consist if cv19 is zero (no consist)
