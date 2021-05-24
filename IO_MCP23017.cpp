@@ -50,7 +50,7 @@ MCP23017::MCP23017(VPIN firstVpin, int nPins, uint8_t I2CAddress, int interruptP
 // Static create() method
 void MCP23017::create(VPIN firstVpin, int nPins, uint8_t I2CAddress, int interruptPin) {
   MCP23017 *dev = new MCP23017(firstVpin, nPins, I2CAddress, interruptPin);
-  addDevice(dev);
+  if (dev) addDevice(dev);
 }
   
 // Device-specific initialisation
@@ -198,9 +198,8 @@ void MCP23017::_loop(unsigned long currentMicros) {
       _deviceState = DEVSTATE_NORMAL;
     } else 
       _deviceState = DEVSTATE_DORMANT;
-  }
 
-  if (currentMicros - _lastLoopEntry > _portTickTime) {
+  } else   if (currentMicros - _lastLoopEntry > _portTickTime) {
     if (_deviceState == DEVSTATE_NORMAL) {
       // Normal scan mode
       if (_gpioInterruptPin < 0 || digitalRead(_gpioInterruptPin) == 0) {

@@ -44,7 +44,7 @@ static void writeRegister(byte address, byte reg, byte value);
 //
 void PCA9685::create(VPIN firstVpin, int nPins, uint8_t I2CAddress) {
   PCA9685 *dev = new PCA9685(firstVpin, nPins, I2CAddress);
-  addDevice(dev);
+  if (dev) addDevice(dev);
 }
 
 // Configure a port on the PCA9685.  This uses the Analogue class
@@ -55,6 +55,10 @@ bool PCA9685::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, i
   int inactivePosition = params[1];
   int profile = params[2];
   int initialState = params[3];
+  #ifdef DIAG_IO
+  DIAG(F("PCA9685 Configure VPIN:%d Apos:%d Ipos:%d Profile:%d state:%d"), 
+    vpin, activePosition, inactivePosition, profile, initialState);
+  #endif
   Analogue::create(vpin, activePosition, inactivePosition, profile, initialState);
   return true;
 }

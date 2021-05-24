@@ -57,7 +57,7 @@ MCP23008::MCP23008(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin) {
 // Static create function
 void MCP23008::create(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin) {
   MCP23008 *dev = new MCP23008(vpin, nPins, I2CAddress, interruptPin);
-  addDevice(dev);
+  if (dev) addDevice(dev);
 }
 
 // Device-specific initialisation

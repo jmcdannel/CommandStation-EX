@@ -43,7 +43,7 @@ PCF8574::PCF8574(VPIN vpin, int nPins, uint8_t I2CAddress) {
 // Static create method for one module.
 void PCF8574::create(VPIN vpin, int nPins, uint8_t I2CAddress) {
   PCF8574 *dev = new PCF8574(vpin, nPins, I2CAddress);
-  addDevice(dev);
+  if (dev) addDevice(dev);
 }
 
 // Device-specific initialisation
