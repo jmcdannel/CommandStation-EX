@@ -87,8 +87,9 @@ int PCF8574::_read(VPIN vpin) {
     // Pin currently driven to zero, so set to one first and then read value
     _portOutputState |= mask;
     uint8_t status = I2CManager.read(_I2CAddress, &_portInputState, 1, &_portOutputState, 1);
-    if (status != I2C_STATUS_OK)
+    if (status != I2C_STATUS_OK) {
       _portInputState = 0xff;  // Return ones if can't read
+    }
   }
   if (_portInputState & mask) 
     result = 1;

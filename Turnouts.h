@@ -38,14 +38,16 @@ const byte STATUS_TYPE = 0x7f;  // Mask for turnout type in tStatus field
 
 //  The struct 'header' is used to determine the length of the
 //  overlaid data so must be at least as long as the anonymous fields it
-//  is overlaid with
+//  is overlaid with.
 struct TurnoutData {
+  // Header common to all turnouts
   union {
     struct {
       int id;
       uint8_t tStatus;
       uint8_t size;
     } header;
+
     struct {
       int id;
       union {
@@ -59,20 +61,26 @@ struct TurnoutData {
       uint8_t size;  // set to actual total length of used structure
     };
   };
+  // Turnout-type-specific structure elements, different length depending
+  //  on turnout type.  This allows the data to be packed efficiently 
+  //  in the EEPROM.
   union {
     struct {
       // DCC address (Address in bits 15-2, subaddress in bits 1-0
       uint16_t address; // CS currently supports linear address 1-2048
         // That's DCC accessory address 1-512 and subaddress 0-3.
     } dccAccessoryData;
+
     struct {
       VPIN vpin;
-      uint16_t activePosition : 12;
-      uint16_t inactivePosition : 12;
+      uint16_t activePosition : 12;  // 0-4095
+      uint16_t inactivePosition : 12; // 0-4095
       uint8_t profile;
     } servoData;
+
     struct {
     } lcnData;
+
     struct {
       VPIN vpin;
     } vpinData;
@@ -85,7 +93,7 @@ public:
   static int turnoutlistHash;
   TurnoutData data;
   Turnout *nextTurnout;
-  static  bool activate(int n, bool state);
+  static bool activate(int n, bool state);
   static Turnout* get(int);
   static bool remove(int);
   static bool isActive(int);
