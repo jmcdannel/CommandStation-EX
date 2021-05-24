@@ -24,26 +24,34 @@
 //==================================================================================================================
 // Static members
 //------------------------------------------------------------------------------------------------------------------
-IODevice *Analogue::createInstance(VPIN vpin) {
-  IODevice::remove(vpin); // Delete any existing device that may conflict
-  Analogue *dev = new Analogue();
-  dev->_firstVpin = vpin;
-  dev->_nPins = 1;
-  dev->_numSteps = dev->_stepNumber = 0;
-  dev->_state = -1; // Unknown state
-  addDevice(dev);
-  return dev; 
-}
 
 void Analogue::create(VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t initialState) {
-  Analogue *dev = (Analogue *)createInstance(vpin);
-  dev->_state = initialState;
-  dev->_configure(vpin, activePosition, inactivePosition, profile);
+  #ifdef DIAG_IO
+  DIAG(F("Analogue Create VPIN:%d State:%d"), vpin, initialState);
+  #endif
+  IODevice::remove(vpin); // Delete any existing device that may conflict
+  Analogue *dev = new Analogue(vpin, activePosition, inactivePosition, profile);
+  if (dev) {
+    dev->_state = initialState;
+    dev->_configure(vpin, activePosition, inactivePosition, profile);
+    addDevice(dev);
+  }
 }
 
 //==================================================================================================================
 // Instance members
 //------------------------------------------------------------------------------------------------------------------
+
+Analogue::Analogue(VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile) {
+  _firstVpin = vpin;
+  _activePosition = activePosition;
+  _inactivePosition = inactivePosition;
+  _profile = (ProfileType)profile;
+  _nPins = 1;
+  _numSteps = _stepNumber = 0;
+  _state = -1; // Unknown state
+}
+
 void Analogue::_configure(VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile) {
   #ifdef DIAG_IO
   DIAG(F("Analogue configure Vpin:%d %d-%d %d"), vpin, activePosition, inactivePosition, profile);

@@ -51,7 +51,7 @@ public:
 #endif
   static IODevice *createInstance(VPIN vpin);
   static void create(VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t initialState);  
-  Analogue() { }
+  Analogue(VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile);
 
   void _loop(unsigned long currentMicros);
   void _write(VPIN vpin, int value);
