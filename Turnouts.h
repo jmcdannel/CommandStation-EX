@@ -43,19 +43,20 @@ struct TurnoutData {
   union {
     struct {
       int id;
-      uint8_t t_status;
-      uint8_t _dummy;
+      uint8_t tStatus;
+      uint8_t size;
     } header;
     struct {
       int id;
       union {
         uint8_t tStatus;
         struct {
-          unsigned int active: 1;
-          unsigned int type: 5;
-          unsigned int :2;
+          uint8_t active: 1;
+          uint8_t type: 5;
+          uint8_t :2;
         };
       };
+      uint8_t size;  // set to actual total length of used structure
     };
   };
   union {

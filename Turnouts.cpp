@@ -209,8 +209,8 @@ void Turnout::load(){
         break;
     }
     if (tt) tt->num = EEStore::pointer() + offsetof(TurnoutData, tStatus);  // Save pointer to tStatus byte within EEPROM
-    // TODO: Advance by the size of the individual turnout struct, not the largest one.
-    EEStore::advance(sizeof(data));
+    // Advance by the actual size of the individual turnout struct.
+    EEStore::advance(data.size);
 #ifdef EESTOREDEBUG
     print(tt);
 #endif
@@ -232,8 +232,7 @@ void Turnout::store(){
 #endif
     tt->num = EEStore::pointer() + offsetof(TurnoutData, tStatus); // Save pointer to tstatus byte within EEPROM
     EEPROM.put(EEStore::pointer(),tt->data);
-    // TODO: Advance by the size of the individual turnout struct, not the largest one.
-    EEStore::advance(sizeof(tt->data));
+    EEStore::advance(tt->data.size);
     tt=tt->nextTurnout;
     EEStore::eeStore->data.nTurnouts++;
   }
@@ -247,6 +246,7 @@ Turnout *Turnout::createDCC(int id, uint16_t add, uint8_t subAdd){
   Turnout *tt=create(id);
   if (!tt) return(tt);
   tt->data.type = TURNOUT_DCC;
+  tt->data.size = sizeof(tt->data.header) + sizeof(tt->data.dccAccessoryData);
   tt->data.active = 0;
   tt->data.dccAccessoryData.address = ((add-1) << 2) + subAdd + 1;
   return(tt);
@@ -259,6 +259,7 @@ Turnout *Turnout::createLCN(int id, uint8_t state) {
   Turnout *tt=create(id);
   if (!tt) return(tt);
   tt->data.type = TURNOUT_LCN;
+  tt->data.size = sizeof(tt->data.header) + sizeof(tt->data.lcnData);
   tt->data.active = (state != 0);
   return(tt);
 }
@@ -273,6 +274,7 @@ Turnout *Turnout::createVpin(int id, VPIN vpin, uint8_t state){
   Turnout *tt=create(id);
   if(!tt) return(tt);
   tt->data.type = TURNOUT_VPIN;;
+  tt->data.size = sizeof(tt->data.header) + sizeof(tt->data.vpinData);
   tt->data.active = (state != 0);
   tt->data.vpinData.vpin = vpin;
   IODevice::write(vpin, state);   // Set initial state of output.
@@ -285,20 +287,22 @@ Turnout *Turnout::createVpin(int id, VPIN vpin, uint8_t state){
 
 Turnout *Turnout::createServo(int id, VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint8_t state){
   if (activePosition > 511 || inactivePosition > 511 || profile > 4) return NULL;
-  // Configure PWM interface device
-  int deviceParams[] = {(int)activePosition, (int)inactivePosition, profile, state};
-  if (!IODevice::configure(vpin, IODevice::CONFIGURE_SERVO, 
-            sizeof(deviceParams)/sizeof(deviceParams[0]), deviceParams)) 
-    return NULL;
 
   Turnout *tt=create(id);
   if (!tt) return(tt);
+  if (tt->data.type != TURNOUT_SERVO) tt->data.active = (state != 0);  // Only set state if it's a new servo object
   tt->data.type = TURNOUT_SERVO;
-  tt->data.active = (state != 0);
+  tt->data.size = sizeof(tt->data.header) + sizeof(tt->data.servoData);
   tt->data.servoData.vpin = vpin;
   tt->data.servoData.activePosition = activePosition;
   tt->data.servoData.inactivePosition = inactivePosition;
   tt->data.servoData.profile = profile;
+  // Configure PWM interface device
+  int deviceParams[] = {(int)activePosition, (int)inactivePosition, profile, tt->data.active};
+  if (!IODevice::configure(vpin, IODevice::CONFIGURE_SERVO, 4, deviceParams)) {
+    remove(id);
+    return NULL;
+  }
   return(tt);
 }
 #endif
@@ -355,7 +359,6 @@ Turnout *Turnout::create(int id){
      firstTurnout=tt;
      tt->data.id=id;
   }
-  tt->num = 0; // Make sure turnout doesn't get written to EEPROM until store() command.
   turnoutlistHash++;
   return tt;
 }
