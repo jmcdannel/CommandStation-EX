@@ -22,6 +22,20 @@
 #include "Arduino.h"
 #include "IODevice.h"
 
+// Uncomment the following #define statement to use callback notification
+//  where the driver supports it.
+//  The principle of callback notification is to avoid the Sensor class
+//  having to poll the device driver cyclically for input values, and then scan 
+//  for changes.  Instead, when the driver scans the inputs, if it detects
+//  a change it invokes a callback function in the Sensor class.  In the current
+//  implementation, the advantages are limited because (a) the Sensor class 
+//  performs debounce checks, and (b) the Sensor class does not have a 
+//  static reference to the output stream for sending <Q>/<q> messages
+//  when a change is detected.  These restrictions mean that the checkAll() 
+//  method still has to iterate through all of the Sensor objects looking 
+//  for changes.
+#define USE_NOTIFY
+
 struct SensorData {
   int snum;
   VPIN pin;
@@ -43,14 +57,16 @@ class Sensor{
 public:
   SensorData data;
   struct {
-    unsigned int active:1;
-    unsigned int inputState:1;
-    unsigned int latchDelay:6;
-  };   // bit 7=active; bit 6=input state; bits 4-0=latchDelay
+    uint8_t active:1;
+    uint8_t inputState:1;
+    uint8_t latchDelay:6;
+  };   // bit 7=active; bit 6=input state; bits 5-0=latchDelay
 
   static Sensor *firstSensor;
+#ifdef USE_NOTIFY
   static Sensor *firstScanSensor;
   static Sensor *lastSensor;
+#endif
   // readingSensor points to the next sensor to be polled, or null if the poll cycle is completed for
   // the period.
   static Sensor *readingSensor;
@@ -67,16 +83,18 @@ public:
   static void checkAll(Print *stream);
   static void printAll(Print *stream);
   static unsigned long lastReadCycle; // value of micros at start of last read cycle
-  static const unsigned int cycleInterval = 5000; // min time between consecutive reads of each sensor in microsecs.
-                                                  // should not be less than device scan cycle time.
-  static const unsigned int minReadCount = 2; // number of consecutive reads before acting on change
-                                        // E.g. 2 x 5000 means debounce time of 10ms
-                                        // Max value is 64
+  static const unsigned int cycleInterval = 10000; // min time between consecutive reads of each sensor in microsecs.
+                                                   // should not be less than device scan cycle time.
+  static const unsigned int minReadCount = 1; // number of additional scans before acting on change
+                                        // E.g. 1 means that a change is ignored for one scan and actioned on the next.
+                                        // Max value is 63
+
+#ifdef USE_NOTIFY
   static bool readSignalValuePhase;
- 
   static void inputChangeCallback(VPIN vpin, int state);
   static IONotifyStateChangeCallback *nextInputChangeCallback;
   static bool inputChangeCallbackRegistered;
+#endif
   
 }; // Sensor
 

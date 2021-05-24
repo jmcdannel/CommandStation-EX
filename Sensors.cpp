@@ -88,10 +88,12 @@ decide to ignore the <q ID> return and only react to <Q ID> triggers.
 void Sensor::checkAll(Print *stream){
   uint16_t sensorCount = 0;
 
+#ifdef USE_NOTIFY
   // Register the event handler ONCE!
   if (!inputChangeCallbackRegistered)
     nextInputChangeCallback = IODevice::registerInputChangeNotification(inputChangeCallback);
   inputChangeCallbackRegistered = true;
+#endif
 
   if (firstSensor == NULL) return;  // No sensors to be scanned
   if (readingSensor == NULL) { 
@@ -109,10 +111,12 @@ void Sensor::checkAll(Print *stream){
   bool pause = false;
   while (readingSensor != NULL && !pause) {
 
+#ifdef USE_NOTIFY
     if (readingSensor == firstSensor) 
       readSignalValuePhase = false;
     else if (readingSensor == firstScanSensor)
       readSignalValuePhase = true;
+#endif
 
     // Where the sensor is attached to a pin, read pin status and invert.  For sources such as LCN,
     // which don't have an input pin to read, the LCN class calls setState() to update inputState when
@@ -121,21 +125,22 @@ void Sensor::checkAll(Print *stream){
     // routine when an input signal change is detected, and this updates the inputState directly,
     // so these don't need to be read here.
     VPIN pin = readingSensor->data.pin;
-    if (readSignalValuePhase) {
+#ifdef USE_NOTIFY
+    if (readSignalValuePhase)
+#endif
       if (pin!=VPIN_NONE) readingSensor->inputState = !IODevice::read(pin);
-    }
 
     // Check if changed since last time, and process changes.
     if (readingSensor->inputState == readingSensor->active) {
       // no change
-      readingSensor->latchDelay = 0;
-    } else if (readingSensor->latchDelay < minReadCount-1) { // 6 bits, max 63, good value unknown yet
-      // change detected, but first increase anti-jitter counter
-      readingSensor->latchDelay++;
-    } else {
+      readingSensor->latchDelay = minReadCount; // Reset counter
+    } else if (readingSensor->latchDelay > 0) {
+      // change detected, but first decrement delay
+      readingSensor->latchDelay--;
+    } else { 
       // change validated, act on it.
       readingSensor->active = readingSensor->inputState;
-      readingSensor->latchDelay = 0;
+      readingSensor->latchDelay = minReadCount;  // Reset counter
       
       if (stream != NULL) {
         StringFormatter::send(stream, F("<%c %d>\n"), readingSensor->active ? 'Q' : 'q', readingSensor->data.snum);
@@ -146,27 +151,37 @@ void Sensor::checkAll(Print *stream){
     // Move to next sensor in list.
     readingSensor = readingSensor->nextSensor;
 
-    // Currently process max of 16 sensors per entry for polled sensors, and
+    // Currently process max of 4 sensors per entry for polled sensors, and
     //  16 per entry for sensors notified by callback.
     // Performance measurements taken during development indicate that, with 128 sensors configured
-    // on 8 MCP23017 GPIO expanders, all 128 inputs can be read within 3ms (400Mhz I2C bus speed), and a 
-    // full sensor scan cycle generally takes less than 5ms.
-    //
+    // on 8 MCP23017 GPIO expanders, all 128 inputs can be read within 3ms (400Mhz I2C bus speed), and a
+    // full sensor scan cycle generally takes less than 5ms with callbacks.
+    // With polling, a full scan cycle of 128 sensors takes around 11-12ms.
     sensorCount++;
+#ifdef USE_NOTIFY
     if (readSignalValuePhase) {
-      if (sensorCount >= 16) pause = true;
-    } else {
+#endif
+      if (sensorCount >= 4) pause = true;
+#ifdef USE_NOTIFY
+    } else 
+    {
       if (sensorCount >= 16) pause = true;
     }
+#endif
   }
 
 } // Sensor::checkAll
 
+
+#ifdef USE_NOTIFY
 // Callback from HAL (IODevice class) when a digital input change is recognised.
 // Updates the inputState field, which is subsequently scanned for changes in the checkAll 
-// method.
+// method.  Ideally the <Q>/<q> message should be sent from here, instead of waiting for
+// the checkAll method, but the output stream is not available at this point.
 void Sensor::inputChangeCallback(VPIN vpin, int state) {
   Sensor *tt;
+  // This bit is not ideal since it has, potentially, to look through the entire list of
+  // sensors to find the one that has changed.  Ideally this should be improved somehow.
   for (tt=firstSensor; tt!=NULL ; tt=tt->nextSensor) {
     if (tt->data.pin == vpin) break;
   }
@@ -176,6 +191,7 @@ void Sensor::inputChangeCallback(VPIN vpin, int state) {
   // Call next registered callback function
   if (nextInputChangeCallback) nextInputChangeCallback(vpin, state);
 }
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -205,6 +221,7 @@ Sensor *Sensor::create(int snum, VPIN pin, int pullUp){
   tt = (Sensor *)calloc(1,sizeof(Sensor));
   if (!tt) return tt;     // memory allocation failure
 
+#ifdef USE_NOTIFY
   if (pin == VPIN_NONE || IODevice::hasCallback(pin)) {
     // Callback available, or no pin to read, so link sensor on to the start of the list
     tt->nextSensor = firstSensor;
@@ -217,13 +234,17 @@ Sensor *Sensor::create(int snum, VPIN pin, int pullUp){
     if (!firstSensor) firstSensor = tt;
     if (!firstScanSensor) firstScanSensor = tt;
   }
+#else
+  tt->nextSensor = firstSensor;
+  firstSensor = tt;
+#endif
 
   tt->data.snum = snum;
   tt->data.pin = pin;
   tt->data.pullUp = pullUp;
   tt->active = 0;
   tt->inputState = 0;
-  tt->latchDelay = 0;
+  tt->latchDelay = minReadCount;
 
   int params[] = {pullUp};
   if (pin != VPIN_NONE) 
@@ -241,7 +262,7 @@ Sensor *Sensor::create(int snum, VPIN pin, int pullUp){
 void Sensor::setState(int value) {
   // Trigger sensor change to be reported on next checkAll loop.
   inputState = (value != 0);
-  latchDelay = minReadCount-1; // Don't wait for anti-jitter logic
+  latchDelay = 0; // Don't wait for anti-jitter logic
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -265,10 +286,12 @@ bool Sensor::remove(int n){
     firstSensor=tt->nextSensor;
   else 
     pp->nextSensor=tt->nextSensor;
+#ifdef USE_NOTIFY
   if (tt==lastSensor)
     lastSensor = pp;
   if (tt==firstScanSensor)
     firstScanSensor = tt->nextSensor;
+#endif
 
   // Check if the sensor being deleted is the next one to be read.  If so, 
   // make the following one the next one to be read.
@@ -311,11 +334,13 @@ void Sensor::store(){
 ///////////////////////////////////////////////////////////////////////////////
 
 Sensor *Sensor::firstSensor=NULL;
-Sensor *Sensor::firstScanSensor = NULL;
-Sensor *Sensor::lastSensor = NULL;
 Sensor *Sensor::readingSensor=NULL;
 unsigned long Sensor::lastReadCycle=0;
-bool Sensor::readSignalValuePhase = false;
 
+#ifdef USE_NOTIFY
+Sensor *Sensor::firstScanSensor = NULL;
+Sensor *Sensor::lastSensor = NULL;
+bool Sensor::readSignalValuePhase = false;
 IONotifyStateChangeCallback *Sensor::nextInputChangeCallback = 0;
 bool Sensor::inputChangeCallbackRegistered = false;
+#endif
