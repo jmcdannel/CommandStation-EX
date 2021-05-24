@@ -214,6 +214,13 @@ private:
 class PCA9685 : public IODevice {
 public:
   static void create(VPIN vpin, int nPins, uint8_t I2CAddress);
+  enum ProfileType {
+    Instant = 0,  // Moves immediately between positions
+    Fast = 1,     // Takes around 500ms end-to-end
+    Medium = 2,   // 1 second end-to-end
+    Slow = 3,     // 2 seconds end-to-end
+    Bounce = 4    // For semaphores/turnouts with a bit of bounce!!
+  };
 
 private:
   // Constructor
@@ -223,9 +230,30 @@ private:
   bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]);
   // Device-specific write function.
   void _write(VPIN vpin, int value);
+  void _loop(unsigned long currentMicros);
+  void updatePosition(uint8_t pin);
+  void writeDevice(uint8_t pin, int value);
   void _display();
 
   uint8_t _I2CAddress; // 0x40-0x43 possible
+
+  struct ServoData {
+    uint16_t activePosition;
+    uint16_t inactivePosition;
+    int8_t state;
+    uint8_t profile;
+    uint16_t currentPosition;
+    uint16_t fromPosition;
+    uint16_t toPosition;
+    uint8_t stepNumber;
+    uint8_t numSteps;
+  } _servoData [16];
+
+  static const uint8_t _catchupSteps = 5; // number of steps to wait before switching servo off
+  static const byte FLASH _bounceProfile[30];
+
+  const unsigned int refreshInterval = 50; // refresh every 50ms
+  unsigned int _lastRefreshTime; // low 16-bits of millis() count.
 
   // structures for setting up non-blocking writes to servo controller
   I2CRB requestBlock;
@@ -425,7 +453,5 @@ private:
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#include "IO_AnalogueDevice.h"
 
 #endif // iodevice_h
