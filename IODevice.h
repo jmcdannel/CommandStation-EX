@@ -23,6 +23,9 @@
 // Define symbol DIAG_IO to enable diagnostic output
 //#define DIAG_IO Y
 
+// Define symbol DIAG_LOOPTIMES to enable CS loop execution time to be reported
+#define DIAG_LOOPTIMES
+
 // Define symbol IO_NO_HAL to reduce FLASH footpring when HAL features not required
 #if defined(ARDUINO_AVR_NANO) || defined(ARDUINO_AVR_UNO) 
 #define IO_NO_HAL
@@ -98,6 +101,10 @@ public:
 
   // Enable shared interrupt on specified pin for GPIO extender modules.  The extender module
   // should pull down this pin when requesting a scan.  The pin may be shared by multiple modules.
+  // Without the shared interrupt, input states are scanned periodically to detect changes on 
+  // GPIO extender pins.  If a shared interrupt pin is configured, then input states are scanned
+  // only when the shared interrupt pin is pulled low.  The external GPIO module releases the pin
+  // once the GPIO port concerned has been read.
   void setGPIOInterruptPin(int16_t pinNumber);
 
   // Method to add a notification.  it is the caller's responsibility to save the return value
@@ -111,6 +118,11 @@ public:
   //      if (nextEv) nextEv(pin, value);
   //     }
   //
+  // Note that this implementation is rudimentary and assumes a small number of callbacks (typically one).  If 
+  //  more than one callback is registered, then the calls to successive callback functions are
+  //  nested, and stack usage will be impacted.  If callbacks are extensively used, it is recommended that
+  //  a class or struct be implemented to hold the callback address, which can be chained to avoid
+  //  nested callbacks.
   static IONotifyStateChangeCallback *registerInputChangeNotification(IONotifyStateChangeCallback *callback);
   
 protected:
