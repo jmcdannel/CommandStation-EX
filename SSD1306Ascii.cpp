@@ -93,11 +93,9 @@ const uint8_t FLASH SSD1306AsciiWire::blankPixels[30] =
  
 // Constructor
 SSD1306AsciiWire::SSD1306AsciiWire(int width, int height) {
-  m_displayHeight = height;
-  m_displayWidth = width;
   // Set size in characters in base class
-  lcdRows = m_displayHeight / 8;
-  lcdCols = m_displayWidth / 6;
+  lcdRows = height / 8;
+  lcdCols = width / 6;
 
   // Initialise request block for I2C
   requestBlock.init();
@@ -146,11 +144,7 @@ void SSD1306AsciiWire::begin(const DevType* dev, uint8_t i2cAddr) {
   m_displayHeight = GETFLASH(&dev->lcdHeight);
   m_colOffset = GETFLASH(&dev->colOffset);
   I2CManager.write_P(m_i2cAddr, table, size);
-  if (m_displayHeight == 64) 
-    I2CManager.write(m_i2cAddr, 5, 0, // Set command mode
-      SSD1306_SETMULTIPLEX, 0x3F,     // ratio 64
-      SSD1306_SETCOMPINS, 0x12);      // sequential COM pins, disable remap
-  else 
+  if (m_displayHeight == 32) 
     I2CManager.write(m_i2cAddr, 5, 0, // Set command mode
       SSD1306_SETMULTIPLEX, 0x1F,     // ratio 32
       SSD1306_SETCOMPINS, 0x02);      // sequential COM pins, disable remap
@@ -225,12 +219,14 @@ const uint8_t FLASH SSD1306AsciiWire::Adafruit128xXXinit[] = {
     0x00,                              // Set to command mode
     SSD1306_DISPLAYOFF,
     SSD1306_SETDISPLAYCLOCKDIV, 0x80,  // the suggested ratio 0x80 
+    SSD1306_SETMULTIPLEX, 0x3F,        // ratio 64 (initially)
     SSD1306_SETDISPLAYOFFSET, 0x0,     // no offset
     SSD1306_SETSTARTLINE | 0x0,        // line #0
     SSD1306_CHARGEPUMP, 0x14,          // internal vcc
     SSD1306_MEMORYMODE, 0x02,          // page mode
     SSD1306_SEGREMAP | 0x1,            // column 127 mapped to SEG0
     SSD1306_COMSCANDEC,                // column scan direction reversed
+    SSD1306_SETCOMPINS, 0X12,          // set COM pins
     SSD1306_SETCONTRAST, 0x7F,         // contrast level 127
     SSD1306_SETPRECHARGE, 0xF1,        // pre-charge period (1, 15)
     SSD1306_SETVCOMDETECT, 0x40,       // vcomh regulator level
@@ -263,17 +259,20 @@ const DevType FLASH SSD1306AsciiWire::Adafruit128x64 = {
 const uint8_t FLASH SSD1306AsciiWire::SH1106_132x64init[] = {
   0x00,                                  // Set to command mode
   SSD1306_DISPLAYOFF,
-  SSD1306_SETSTARTPAGE | 0X0,            // set page address
-  SSD1306_SETCONTRAST, 0x80,             // 128
-  SSD1306_SEGREMAP | 0X1,                // set segment remap
-  SSD1306_NORMALDISPLAY,                 // normal / reverse
-  SH1106_SET_PUMP_MODE, SH1106_PUMP_ON,  // set charge pump enable **
-  SH1106_SET_PUMP_VOLTAGE | 0X2,         // 8.0 volts              **
-  SSD1306_COMSCANDEC,                    // Com scan direction
-  SSD1306_SETDISPLAYOFFSET, 0X00,        // set display offset
   SSD1306_SETDISPLAYCLOCKDIV, 0X80,      // set osc division
-  SSD1306_SETPRECHARGE, 0X1F,            // set pre-charge period  **
+  SSD1306_SETMULTIPLEX, 0x3F,            // ratio 64
+  SSD1306_SETDISPLAYOFFSET, 0X00,        // set display offset
+  SSD1306_SETSTARTPAGE | 0X0,            // set page address
+  SSD1306_SETSTARTLINE | 0x0,            // set start line
+  SH1106_SET_PUMP_MODE, SH1106_PUMP_ON,  // set charge pump enable
+  SSD1306_SEGREMAP | 0X1,                // set segment remap
+  SSD1306_COMSCANDEC,                    // Com scan direction
+  SSD1306_SETCOMPINS, 0X12,              // set COM pins
+  SSD1306_SETCONTRAST, 0x80,             // 128
+  SSD1306_SETPRECHARGE, 0X1F,            // set pre-charge period
   SSD1306_SETVCOMDETECT,  0x40,          // set vcomh
+  SH1106_SET_PUMP_VOLTAGE | 0X2,         // 8.0 volts
+  SSD1306_NORMALDISPLAY,                 // normal / reverse
   SSD1306_DISPLAYON
 };
 
@@ -283,7 +282,8 @@ const DevType FLASH SSD1306AsciiWire::SH1106_132x64 =  {
   sizeof(SH1106_132x64init),
   128,
   64,
-  0    // SH1106 is a 132x64 controller. Using the full width allows 22 full characters
+  2    // SH1106 is a 132x64 controller but most OLEDs are only attached
+       // to columns 2-129.
 };
 
 
