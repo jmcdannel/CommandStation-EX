@@ -50,7 +50,7 @@ class Sensor{
   //   points to the start of the overall list, and 'lastSensor' points to the end of the list
   //   (the last sensor object). This structure allows sensors to be added to the start or the
   //   end of the list easily.  So if an input pin supports change notification, it is placed at the 
-  //   end of the list.  If not, it is placed at the beginning.  And the pointer 'firstScanSensor' 
+  //   end of the list.  If not, it is placed at the beginning.  And the pointer 'firstPollSensor' 
   //   is set to the first of the sensor objects that requires scanning.  Thus, we can iterate
   //   through the whole list, or just through the part that requires scanning.
 
@@ -64,7 +64,7 @@ public:
 
   static Sensor *firstSensor;
 #ifdef USE_NOTIFY
-  static Sensor *firstScanSensor;
+  static Sensor *firstPollSensor;
   static Sensor *lastSensor;
 #endif
   // readingSensor points to the next sensor to be polled, or null if the poll cycle is completed for
@@ -90,7 +90,7 @@ public:
                                         // Max value is 63
 
 #ifdef USE_NOTIFY
-  static bool readSignalValuePhase;
+  static bool pollSignalPhase;
   static void inputChangeCallback(VPIN vpin, int state);
   static IONotifyStateChangeCallback *nextInputChangeCallback;
   static bool inputChangeCallbackRegistered;

@@ -57,7 +57,12 @@ bool PCA9685::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, i
   #endif
 
   int8_t pin = vpin - _firstVpin;
-  struct ServoData *s = &_servoData[pin];
+  struct ServoData *s = _servoData[pin];
+  if (!s) { 
+    _servoData[pin] = (struct ServoData *)calloc(1, sizeof(struct ServoData));
+    s = _servoData[pin];
+    if (!s) return false; // Check for failed memory allocation
+  }
 
   s->activePosition = params[0];
   s->currentPosition = s->inactivePosition = params[1];
@@ -76,15 +81,16 @@ PCA9685::PCA9685(VPIN firstVpin, int nPins, uint8_t I2CAddress) {
   _nPins = min(nPins, 16);
   _I2CAddress = I2CAddress;
   for (int i=0; i<_nPins; i++) {
-    struct ServoData *s = &_servoData[i];
-    // Assume default servo bounds of 1ms-2ms pulse length
-    s->activePosition = 409;
-    s->inactivePosition = 205;
-    // Set default position to mid-range
-    s->currentPosition = 307;
-    s->profile = Instant;
-    s->numSteps = 0;
-    s->state = -1;  // Current state unknown.
+    _servoData[i] = NULL;
+    // struct ServoData *s = _servoData[i];
+    // // Assume default servo bounds of 1ms-2ms pulse length
+    // s->activePosition = 409;
+    // s->inactivePosition = 205;
+    // // Set default position to mid-range
+    // s->currentPosition = 307;
+    // s->profile = Instant;
+    // s->numSteps = 0;
+    // s->state = -1;  // Current state unknown.
   }
 
   // Initialise structure used for setting pulse rate
@@ -121,7 +127,8 @@ void PCA9685::_write(VPIN vpin, int value) {
   int pin = vpin - _firstVpin;
   if (value) value = 1;
 
-  struct ServoData *s = &_servoData[pin];
+  struct ServoData *s = _servoData[pin];
+  if (!s) return;               // Pin not configured
   if (s->state == value) return; // Nothing to do.
 
   uint8_t profile = s->profile;
@@ -155,7 +162,8 @@ void PCA9685::_loop(unsigned long currentMicros) {
 // Private function to reposition servo
 // TODO: Could calculate step number from elapsed time, to allow for erratic loop timing.
 void PCA9685::updatePosition(uint8_t pin) {
-  struct ServoData *s = &_servoData[pin];
+  struct ServoData *s = _servoData[pin];
+  if (!s) return;
   if (s->numSteps == 0) return; // No animation in progress
   if (s->stepNumber < s->numSteps) {
     s->stepNumber++;
@@ -207,7 +215,6 @@ void PCA9685::_display() {
 static void writeRegister(byte address, byte reg, byte value) {
   I2CManager.write(address, 2, reg, value);
 }
-
 
 // Profile for a bouncing signal or turnout
 // The profile below is in the range 0-100% and should be combined with the desired limits

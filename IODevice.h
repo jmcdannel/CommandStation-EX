@@ -69,6 +69,7 @@ public:
     DEVSTATE_INITIALISING = 2,
     DEVSTATE_NORMAL = 3,
     DEVSTATE_SCANNING = 4,
+    DEVSTATE_FAILED = 5,
   } DeviceStateEnum;
 
   // Static functions to find the device and invoke its member functions
@@ -201,8 +202,6 @@ private:
   static IODevice *_firstDevice;
 
   static IODevice *_nextLoopDevice;
-
-  
 };
 
 
@@ -238,16 +237,17 @@ private:
   uint8_t _I2CAddress; // 0x40-0x43 possible
 
   struct ServoData {
-    uint16_t activePosition;
-    uint16_t inactivePosition;
+    uint16_t activePosition : 12;
+    uint16_t inactivePosition : 12;
     int8_t state;
     uint8_t profile;
-    uint16_t currentPosition;
-    uint16_t fromPosition;
-    uint16_t toPosition;
+    uint16_t currentPosition : 12;
+    uint16_t fromPosition : 12;
+    uint16_t toPosition : 12;
     uint8_t stepNumber;
     uint8_t numSteps;
-  } _servoData [16];
+  };
+  struct ServoData *_servoData [16];
 
   static const uint8_t _catchupSteps = 5; // number of steps to wait before switching servo off
   static const byte FLASH _bounceProfile[30];
@@ -260,150 +260,6 @@ private:
   uint8_t outputBuffer[5];
 };
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-/*
- * Example of an IODevice subclass for PCF8574 8-bit I/O expander.
- */
- 
-class PCF8574 : public IODevice {
-public:
-  static void create(VPIN vpin, int nPins, uint8_t I2CAddress) ;
-
-private:
-  // Constructor
-  PCF8574(VPIN vpin, int nPins, uint8_t I2CAddress);  
-  // Device-specific initialisation
-  void _begin();
-  // Device-specific pin configuration function.  
-  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]);
-  // Device-specific write function.
-  void _write(VPIN vpin, int value);
-  // Device-specific read function.
-  int _read(VPIN vpin);
-  void _display();
-  void _loop(unsigned long currentMicros);
-  // Address may be 0x20 up to 0x27, but this may conflict with an LCD if present on 0x27
-  //  or an Adafruit LCD backpack which defaults to 0x20
-  uint8_t _I2CAddress; 
-  uint8_t _portInputState; 
-  uint8_t _portOutputState;
-  // Interval between refreshes of each input port
-  static const int _portTickTime = 4000;
-  unsigned long _lastLoopEntry = 0;
-
-  I2CRB requestBlock;
-  uint8_t inputBuffer[1]={0xff};  // One eight-bit register.
-  uint8_t outputBuffer[1]; // Register number
-  bool scanActive = false;
-};
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-/*
- * IODevice subclass for MCP23017 16-bit I/O expander.
- */
- 
-class MCP23017 : public IODevice {
-public:
-  static void create(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin=-1);
-  
-private:
-  // Constructor
-  MCP23017(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin=-1);
-  // Device-specific initialisation
-  void _begin();
-  // Device-specific pin configuration
-  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]);
-  // Device-specific write function.
-  void _write(VPIN vpin, int value);
-
-  // Function called to check whether callback notification is supported by this pin.
-  bool _hasCallback(VPIN vpin);
-
-  // Device-specific read function.
-  int _read(VPIN vpin);
-  // Device-specific loop function
-  void _loop(unsigned long currentMicros);
-  // Device specific identification function
-  void _display();
-
-  uint8_t _I2CAddress;
-  uint16_t _currentPortState;  // GPIOA in LSB and GPIOB in MSB
-  uint16_t _portMode;
-  uint16_t _portPullup;  
-  uint8_t _portCounter;
-  // Interval between refreshes of each input port
-  static const int _portTickTime = 4000;
-  unsigned long _lastLoopEntry = 0;
-  bool scanActive = false;
-
-  I2CRB requestBlock;
-  uint8_t inputBuffer[2]={0xff,0xff};  // Two eight-bit registers.
-  uint8_t outputBuffer[1]; // Register number
-
-  enum {
-    REG_IODIRA = 0x00,
-    REG_IODIRB = 0x01,
-    REG_GPINTENA = 0x04,
-    REG_GPINTENB = 0x05,
-    REG_IOCON = 0x0A,
-    REG_GPPUA = 0x0C,
-    REG_GPPUB = 0x0D,
-    REG_GPIOA = 0x12,
-    REG_GPIOB = 0x13,
-  };
-};
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-/*
- * IODevice subclass for MCP23008 8-bit I/O expander.
- */
- 
-class MCP23008 : public IODevice {
-public:
-  static void create(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin=-1) ;
-
-private:
-  // Constructor
-  MCP23008(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin=-1);  
-  // Device-specific initialisation
-  void _begin();
-  // Device-specific pin configuration
-  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]);
-  // Device-specific write function.
-  void _write(VPIN vpin, int value);
-  // Device-specific read function.
-  int _read(VPIN vpin);
-  void _display();
-  void _loop(unsigned long currentMicros);
-
-  // Address may be 0x20 up to 0x27, but this may conflict with an LCD if present on 0x27
-  //  or an Adafruit LCD backpack which defaults to 0x20
-  uint8_t _I2CAddress; 
-  // Module state
-  uint8_t _portDirection;
-  uint8_t _portPullup;
-  uint8_t _portInputState; 
-  uint8_t _portOutputState;
-  uint8_t _portCounter;
-  bool scanActive = false;
-  // Interval between successive input port scan cycles
-  static const int _portTickTime = 4000;
-  unsigned long _lastLoopEntry = 0;
-
-  I2CRB requestBlock;
-  int8_t currentPollDevice = -1;
-  uint8_t outputBuffer[1]; // Register number
-  uint8_t inputBuffer[1] = {0xff};  // One 8-bit register value
-
-  enum {
-    // Register definitions for MCP23008
-    REG_IODIR=0x00,
-    REG_GPPU=0x06,
-    REG_GPIO=0x09
-  };
-
-};
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -453,5 +309,9 @@ private:
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// #include "IO_MCP23008.h"
+// #include "IO_MCP23017.h"
+// #include "IO_PCF8574.h"
 
 #endif // iodevice_h
