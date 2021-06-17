@@ -17,61 +17,41 @@
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+// TODO: Enable optional use of interrupt pin on MCP23008/23017 modules, 
+// chained from one module to another, into an Arduino digital input.
+// When the Arduino digital input is pulled DOWN, it indicates that the 
+// modules need to be scanned.  Once the interrupting module(s) has been
+// scanned, then the digital input will deactivate (pulled UP).
+
 #include <Arduino.h>
 #include "IODevice.h"
 #include "DIAG.h" 
 #include "FSH.h"
+#include "IO_MCP23017.h"
 
 //==================================================================================================================
 // Static methods
 //------------------------------------------------------------------------------------------------------------------
 
-#ifdef IO_LATEBINDING
-// General static method for creating an arbitrary device without having to know
-//  its class at coding time.  Late binding, Microsoft call it.
-//  The device class is identifed from the deviceType parameter by looking down 
-//  a list of registered types.
-IODevice *IODevice::create(int deviceType, VPIN firstVpin, int paramCount, int params[]) {
-  for (IODeviceType *dt = _firstDeviceType; dt != 0; dt=dt->_nextDeviceType){
-    if (dt->getDeviceType() == deviceType) {
-      IODevice *dev = (dt->createFunction)(firstVpin);
-      if (dev)
-        dev->_configure(firstVpin, paramCount, params);
-      return dev;
-    }
-  }
-  return NULL;
-}
-
-void IODevice::_registerDeviceType(int deviceTypeID, IODevice *createFunction(VPIN)) {
-  IODeviceType *dt = new IODeviceType(deviceTypeID);
-  // Link new DeviceType into chain
-  dt->_nextDeviceType = _firstDeviceType;
-  dt->createFunction = createFunction;
-  _firstDeviceType = dt;
-}
-#endif
-
-
 // Static functions
 
 // Static method to initialise the IODevice subsystem.  
+
+#if !defined(IO_NO_HAL)
+
 // Create any standard device instances that may be required, such as the Arduino pins 
 // and PCA9685.
 void IODevice::begin() {
   // Initialise the IO subsystem
   ArduinoPins::create(2, 48);  // Reserve pins numbered 2-49 for direct access
-#if !defined(ARDUINO_AVR_NANO) && !defined(ARDUINO_AVR_UNO)
   // Predefine two PCA9685 modules 0x40-0x41
   // Allocates 32 pins 100-131
-  PCA9685::create(IODevice::firstServoVpin, 32, 0x40);
-  // Predefine one PCF8574 module 0x23
-  // Allocates 8 pins 132-139
-  PCF8574::create(IODevice::firstServoVpin+32, 8, 0x23);
-  // Predefine two MCP23017 modules 0x20-0x21
-  // Allocates 32 pins 164-x195
-  MCP23017::create(IODevice::firstServoVpin+64, 32, 0x20);
-#endif
+  PCA9685::create(100, 16, 0x40);
+  PCA9685::create(116, 16, 0x41);
+  // Predefine two MCP23017 module 0x20/0x21
+  // Allocates 32 pins 164-195
+  MCP23017::create(164, 16, 0x20);
+  MCP23017::create(180, 16, 0x21);
 }
 
 // Overarching static loop() method for the IODevice subsystem.  Works through the
@@ -82,13 +62,13 @@ void IODevice::begin() {
 // doesn't need to invoke it.
 void IODevice::loop() {
   unsigned long currentMicros = micros();
-  // Call every device's loop function in turn.
-  for (IODevice *dev = _firstDevice; dev != 0; dev = dev->_nextDevice) {
-    dev->_loop(currentMicros);
-  }
-
+  // Call every device's loop function in turn, one per entry.
+  if (!_nextLoopDevice) _nextLoopDevice = _firstDevice;
+  _nextLoopDevice->_loop(currentMicros);
+  _nextLoopDevice = _nextLoopDevice->_nextDevice;
+  
   // Report loop time if diags enabled
-#if defined(DIAG_IO)
+#if defined(DIAG_LOOPTIMES)
   static unsigned long lastMicros = 0;
   static unsigned long maxElapsed = 0;
   static unsigned long lastOutputTime = 0;
@@ -101,7 +81,7 @@ void IODevice::loop() {
   count++;
   if (currentMicros - lastOutputTime > 5000000UL) {
     if (lastOutputTime > 0) 
-      LCD(3,F("Loop=%lus,%lus"), (unsigned long)5000000UL/count, maxElapsed);
+      LCD(1,F("Loop=%lus,%lus max"), (unsigned long)5000000UL/count, maxElapsed);
     maxElapsed = 0;
     count = 0;
     lastOutputTime = currentMicros;
@@ -122,6 +102,14 @@ bool IODevice::exists(VPIN vpin) {
   return findDevice(vpin) != NULL;
 }
 
+// check whether the pin supports notification.  If so, then regular _read calls are not required.
+bool IODevice::hasCallback(VPIN vpin) {
+  IODevice *dev = findDevice(vpin);
+  if (!dev) return false;
+  return dev->_hasCallback(vpin);
+}
+
+
 // Remove specified device if one exists.  This is necessary if devices are
 // created on-the-fly by Turnouts, Sensors or Outputs since they may have
 // been saved to EEPROM and recreated on start.
@@ -132,6 +120,10 @@ void IODevice::remove(VPIN vpin) {
     if (dev->owns(vpin)) {
       // Found object
       if (dev->_isDeletable()) {
+        // First check it isn't next one to be processed by loop().
+        //   If so, skip to the following one.
+        if (dev == _nextLoopDevice) 
+          _nextLoopDevice = _nextLoopDevice->_nextDevice;
         // Now unlink
         if (!previousDev)
           _firstDevice = dev->_nextDevice;
@@ -155,21 +147,11 @@ void IODevice::_display() {
 
 // Find device associated with nominated Vpin and pass configuration values on to it.
 //   Return false if not found.
-bool IODevice::configure(VPIN vpin, int paramCount, int params[]) {
+bool IODevice::configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) {
   IODevice *dev = findDevice(vpin);
-  if (dev) return dev->_configure(vpin, paramCount, params);
+  if (dev) return dev->_configure(vpin, configType, paramCount, params);
   return false;
 }
-
-// Find device associaed with nominated Vpin and pass request on to it.
-//  configurePullup is used invoke a GPIO IODevice instance's _configurePullup method.
-//  Return false if not found.
-bool IODevice::configurePullup(VPIN vpin, bool pullup) {
-  IODevice *dev = findDevice(vpin);
-  if (dev) return dev->_configurePullup(vpin, pullup);
-  return false;
-}
-
 
 // Write value to virtual pin(s).  If multiple devices are allocated the same pin
 //  then only the first one found will be used.
@@ -180,9 +162,22 @@ void IODevice::write(VPIN vpin, int value) {
     return;
   }
 #ifdef DIAG_IO
-  DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
+  //DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
 #endif
 }
+
+void IODevice::setGPIOInterruptPin(int16_t pinNumber) {
+  if (pinNumber >= 0)
+    pinMode(pinNumber, INPUT_PULLUP);
+  _gpioInterruptPin = pinNumber;
+}
+
+IONotifyStateChangeCallback *IODevice::registerInputChangeNotification(IONotifyStateChangeCallback *callback) {
+  IONotifyStateChangeCallback *previousHead = _notifyCallbackChain;
+  _notifyCallbackChain = callback;
+  return previousHead;
+}
+
 
 // Private helper function to add a device to the chain of devices.
 void IODevice::addDevice(IODevice *newDevice) {
@@ -204,6 +199,12 @@ IODevice *IODevice::findDevice(VPIN vpin) {
   return NULL;
 }
   
+//==================================================================================================================
+// Static data
+//------------------------------------------------------------------------------------------------------------------
+
+IONotifyStateChangeCallback *IODevice::_notifyCallbackChain = 0;
+
 
 //==================================================================================================================
 // Instance members
@@ -227,7 +228,7 @@ void IODevice::writeDownstream(VPIN vpin, int value) {
     }
   }
 #ifdef DIAG_IO
-  DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
+  //DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
 #endif  
 } 
 
@@ -238,7 +239,7 @@ bool IODevice::read(VPIN vpin) {
       return dev->_read(vpin);
   }
 #ifdef DIAG_IO
-  DIAG(F("IODevice::read(): Vpin %d not found!"), (int)vpin);
+  //DIAG(F("IODevice::read(): Vpin %d not found!"), (int)vpin);
 #endif
   return false;
 }
@@ -250,8 +251,51 @@ bool IODevice::_isDeletable() {
 // Start of chain of devices.
 IODevice *IODevice::_firstDevice = 0;
 
-// Start of chain of device types.
-IODeviceType *IODevice::_firstDeviceType = 0;
+// Reference to next device to be called on _loop() method.
+IODevice *IODevice::_nextLoopDevice = 0;
+
+#else // !defined(IO_NO_HAL)
+
+// Minimal implementations of public HAL interface, to support Arduino pin I/O and nothing more.
+
+void IODevice::begin() { DIAG(F("NO HAL CONFIGURED!")); }
+bool IODevice::configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) {
+  (void)vpin; (void)paramCount; (void)params; // Avoid compiler warnings
+  if (configType == CONFIGURE_INPUT || configType == CONFIGURE_OUTPUT) 
+    return true;
+  else
+    return false;
+}
+void IODevice::write(VPIN vpin, int value) {
+  pinMode(vpin, OUTPUT);
+  digitalWrite(vpin, value);
+}
+bool IODevice::hasCallback(VPIN vpin) { 
+  (void)vpin;  // Avoid compiler warnings
+  return false; 
+}
+bool IODevice::read(VPIN vpin) { 
+  pinMode(vpin, INPUT_PULLUP);
+  return digitalRead(vpin);
+}
+void IODevice::loop() {}
+void IODevice::DumpAll() {
+  DIAG(F("NO HAL CONFIGURED!"));
+}
+bool IODevice::exists(VPIN vpin) { return (vpin > 2 && vpin < 49); }
+void IODevice::remove(VPIN vpin) {
+  (void)vpin;  // Avoid compiler warnings
+}
+void IODevice::setGPIOInterruptPin(int16_t pinNumber) {
+  (void) pinNumber; // Avoid compiler warning
+}
+IONotifyStateChangeCallback *IODevice::registerInputChangeNotification(IONotifyStateChangeCallback *callback) {
+  (void)callback;  // Avoid compiler warning
+  return NULL;
+}
+
+#endif // IO_NO_HAL
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -264,7 +308,11 @@ ArduinoPins::ArduinoPins(VPIN firstVpin, int nPins) {
 }
 
 // Device-specific pin configuration
-bool ArduinoPins::_configurePullup(VPIN id, bool pullup) {
+bool ArduinoPins::_configure(VPIN id, ConfigTypeEnum configType, int paramCount, int params[]) {
+  if (configType != CONFIGURE_INPUT) return false;
+  if (paramCount != 1) return false;
+  bool pullup = params[0];
+
   int pin = id;
   #ifdef DIAG_IO
   DIAG(F("Arduino _configurePullup Pin:%d Val:%d"), pin, pullup);

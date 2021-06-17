@@ -596,7 +596,7 @@ bool DCCEXParser::parseZ(Print *stream, int16_t params, int16_t p[])
         for (Output *tt = Output::firstOutput; tt != NULL; tt = tt->nextOutput)
         {
             gotone = true;
-            StringFormatter::send(stream, F("<Y %d %d %d %d>\n"), tt->data.id, tt->data.pin, tt->data.iFlag, tt->data.oStatus);
+            StringFormatter::send(stream, F("<Y %d %d %d %d>\n"), tt->data.id, tt->data.pin, tt->data.flags, tt->data.active);
         }
         return gotone;
     }
@@ -675,7 +675,7 @@ bool DCCEXParser::parseT(Print *stream, int16_t params, int16_t p[])
         if (!tt)
             return false;
         tt->activate(p[1]);
-        StringFormatter::send(stream, F("<H %d %d>\n"), tt->data.id, (tt->data.tStatus & STATUS_ACTIVE)!=0);
+        StringFormatter::send(stream, F("<H %d %d>\n"), p[0], tt->data.active);
     }
         return true;
 
@@ -705,13 +705,13 @@ bool DCCEXParser::parseS(Print *stream, int16_t params, int16_t p[])
         return true;
 
     case 0: // <S> list sensor definitions
-	if (Sensor::firstSensor == NULL)
-	    return false;
-        for (Sensor *tt = Sensor::firstSensor; tt != NULL; tt = tt->nextSensor)
-        {
-            StringFormatter::send(stream, F("<Q %d %d %d>\n"), tt->data.snum, tt->data.pin, tt->data.pullUp);
-        }
-        return true;
+      if (Sensor::firstSensor == NULL)
+        return false;
+      for (Sensor *tt = Sensor::firstSensor; tt != NULL; tt = tt->nextSensor)
+      {
+          StringFormatter::send(stream, F("<Q %d %d %d>\n"), tt->data.snum, tt->data.pin, tt->data.pullUp);
+      }
+      return true;
 
     default: // invalid number of arguments
         break;

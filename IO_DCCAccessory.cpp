@@ -21,36 +21,41 @@
 #include "IODevice.h"
 #include "DIAG.h"
 
-void DCCAccessoryDecoder::create(VPIN vpin, int DCCAddress, int DCCSubaddress) {
+void DCCAccessoryDecoder::create(VPIN vpin, int nPins, int DCCAddress, int DCCSubaddress) {
+  int linearAddress = (DCCAddress << 2) + DCCSubaddress;
+  create(vpin, nPins, linearAddress);
+}
+
+void DCCAccessoryDecoder::create(VPIN vpin, int nPins, int DCCLinearAddress) {
   IODevice::remove(vpin);
-  DCCAccessoryDecoder *dev = new DCCAccessoryDecoder();
-  dev->_firstVpin = vpin;
-  dev->_nPins = 1;
-  dev->_DCCAddress = DCCAddress;
-  dev->_DCCSubaddress= DCCSubaddress;
+  DCCAccessoryDecoder *dev = new DCCAccessoryDecoder(vpin, nPins, DCCLinearAddress);
   addDevice(dev);
 }
 
-void DCCAccessoryDecoder::create(VPIN vpin, int DCCLinearAddress) {
-  int DCCAddress = (DCCLinearAddress-1)/4;
-  int DCCSubaddress = DCCLinearAddress - DCCAddress*4;
-  create(vpin, DCCAddress, DCCSubaddress);
-}
-
 // Constructor
-DCCAccessoryDecoder::DCCAccessoryDecoder() {}
+DCCAccessoryDecoder::DCCAccessoryDecoder(VPIN vpin, int nPins, int DCCLinearAddress) {
+   _firstVpin = vpin;
+  _nPins = nPins;
+  _dccLinearAddress = DCCLinearAddress;
+  int endAddress = DCCLinearAddress + _nPins - 1;
+  DIAG(F("DCC Accessory Decoder configured Vpins:%d-%d Linear Address:%d-%d (%d/%d-%d/%d)"), _firstVpin, _firstVpin+_nPins-1,
+      _dccLinearAddress, _dccLinearAddress+_nPins-1,
+      _dccLinearAddress>>2, _dccLinearAddress%4, endAddress>>2, endAddress%4);
+}
 
 // Device-specific write function.
 void DCCAccessoryDecoder::_write(VPIN id, int state) {
-  int subaddress = id-_firstVpin+_DCCSubaddress;
+  int linearAddress = _dccLinearAddress + id - _firstVpin;
   #ifdef DIAG_IO
-  DIAG(F("DCC Write Addr:%d Subddr:%d State:%d"), _DCCAddress, subaddress, state);
+  DIAG(F("DCC Write Linear Address:%d State:%d"), linearAddress, state);
   #endif
-  DCC::setAccessory(_DCCAddress, subaddress, state);
+  DCC::setAccessory(linearAddress >> 2, linearAddress % 4, state);
 }
 
 void DCCAccessoryDecoder::_display() {
-  DIAG(F("DCC Vpins:%d-%d Addr:%d/%d "), 
-    (int)_firstVpin, (int)_firstVpin+_nPins-1, (int)_DCCAddress, (int)_DCCSubaddress);
+  int endAddress = _dccLinearAddress + _nPins - 1;
+  DIAG(F("DCC Accessory Vpins:%d-%d Linear Address:%d-%d (%d/%d-%d/%d)"), _firstVpin, _firstVpin+_nPins-1,
+      _dccLinearAddress, _dccLinearAddress+_nPins-1,
+      _dccLinearAddress>>2, _dccLinearAddress%4, endAddress>>2, endAddress%4);
 }
 

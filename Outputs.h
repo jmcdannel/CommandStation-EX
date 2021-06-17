@@ -20,22 +20,36 @@
 #define Outputs_h
 
 #include <Arduino.h>
+#include "IODevice.h"
 
 struct OutputData {
-  uint8_t oStatus;
-  uint8_t id;
-  uint8_t pin; 
-  uint8_t iFlag; 
+  union {
+    uint8_t oStatus;      // (Bit 0=Invert, Bit 1=Set state to default, Bit 2=default state, Bit 7=active)
+    struct {
+      unsigned int flags : 7; // Bit 0=Invert, Bit 1=Set state to default, Bit 2=default state
+      unsigned int : 1;
+    };
+    struct {
+      unsigned int invert : 1;
+      unsigned int setDefault : 1;
+      unsigned int defaultValue : 1;
+      unsigned int: 4;
+      unsigned int active : 1;
+    };
+  };
+  int id;
+  VPIN pin; 
 };
 
 class Output{
 public:
   void activate(int s);
+  bool isActive();
   static Output* get(int);
   static bool remove(int);
   static void load();
   static void store();
-  static Output *create(int, int, int, int=0);
+  static Output *create(int, VPIN, int, int=0);
   static Output *firstOutput;
   struct OutputData data;
   Output *nextOutput;

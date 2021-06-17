@@ -18,41 +18,11 @@
  */
 
 /* 
- * Turnout data is stored in a 6 byte structure in the following form:
- *
- * DCC Turnouts:
- *  Word ID
- *  Byte tStatus: Bit 7=active
- *                Bits 6 to 0=zeroes (not used)
- *  Byte subAddress: Bits 7-5: zeroes (not used)
- *                Bits 4-0: DCC Sub Address (1-4)
- *  Word address: Bits 15-0: DCC Address (0-65535)
- * 
- * Servo Turnouts:
- *  Word ID
- *  Byte tStatus: Bit 7=active
- *                Bit 6=one
- *                Bits 5 to 0=PWM Pin (0-63)
- *  Byte positionByte: Eight LSBs of activePosition (0-511)
- *  Word positionWord: Bits 15-13=zeroes
- *                     Bits 12-10=Profile
- *                     Bit 9=MSB of activePosition
- *                     Bits 8-0=inactivePosition (0-511)
- * 
- * LCN Turnouts
- *  Word ID
- *  Byte tStatus: Bit 7=active
- *                Bits 6 to 0=zero (not used)
- *  Byte subAddress: Bits 7-0=zeroes (not used)
- *  Word address: Bits 15-0=0xffff (-1)
- *
- * VPIN Turnouts (digital outputs on Arduino or extender)
- *  Word ID
- *  Byte tStatus: Bit 7=active
- *                Bits 6 to 0=zeroes (not used)
- *  Byte subAddress: Bits 7-0: 0xFE (-1)
- *  Word address: Bits 15-0=VPIN number
- * 
+ * Turnout data is stored in a structure whose length depends on the
+ * type of turnout.  There is a common header of 3 bytes, followed by
+ * 2 bytes for DCC turnout, 5 bytes for servo turnout, 2 bytes for a
+ * VPIN turnout, or zero bytes for an LCN turnout.
+ * The variable length allows the limited space in EEPROM to be used effectively.
  */
 
 #ifndef Turnouts_h
@@ -63,29 +33,58 @@
 #include "LCN.h"
 #include "IODevice.h"
 
-const byte STATUS_ACTIVE=0x80; // Flag as activated
-const byte STATUS_PWM=0x40; // Flag as a PWM turnout
-const byte STATUS_PWMPIN=0x3F; // PWM  pin 0-63
-const int  LCN_TURNOUT_ADDRESS=-1;  // spoof dcc address -1 indicates a LCN turnout
-const int  VPIN_TURNOUT_SUBADDRESS=-2;  // spoof dcc subaddress -2 indicates a VPIN turnout
+const byte STATUS_ACTIVE=0x80; // Flag as activated in tStatus field
+const byte STATUS_TYPE = 0x7f;  // Mask for turnout type in tStatus field
 
+//  The struct 'header' is used to determine the length of the
+//  overlaid data so must be at least as long as the anonymous fields it
+//  is overlaid with.
 struct TurnoutData {
-  int id;
-  uint8_t tStatus; // has STATUS_ACTIVE, STATUS_PWM, STATUS_PWMPIN  
+  // Header common to all turnouts
   union {
     struct {
-      // DCC subaddress (1-4) or VPIN
-      uint8_t subAddress;
-      // DCC address, or -1 (LCN) or -2 (VPIN)
-      int address;
-    };
+      int id;
+      uint8_t tStatus;
+      uint8_t size;
+    } header;
+
     struct {
-      // Least significant 8 bits of activePosition
-      uint8_t positionByte;
-      // Most significant 4 bits of activePosition, and inactivePosition.
-      uint16_t positionWord;
+      int id;
+      union {
+        uint8_t tStatus;
+        struct {
+          uint8_t active: 1;
+          uint8_t type: 5;
+          uint8_t :2;
+        };
+      };
+      uint8_t size;  // set to actual total length of used structure
     };
-  }; // DCC address or PWM servo positions 
+  };
+  // Turnout-type-specific structure elements, different length depending
+  //  on turnout type.  This allows the data to be packed efficiently 
+  //  in the EEPROM.
+  union {
+    struct {
+      // DCC address (Address in bits 15-2, subaddress in bits 1-0
+      uint16_t address; // CS currently supports linear address 1-2048
+        // That's DCC accessory address 1-512 and subaddress 0-3.
+    } dccAccessoryData;
+
+    struct {
+      VPIN vpin;
+      uint16_t activePosition : 12;  // 0-4095
+      uint16_t inactivePosition : 12; // 0-4095
+      uint8_t profile;
+    } servoData;
+
+    struct {
+    } lcnData;
+
+    struct {
+      VPIN vpin;
+    } vpinData;
+  };
 };
 
 class Turnout {
@@ -94,18 +93,22 @@ public:
   static int turnoutlistHash;
   TurnoutData data;
   Turnout *nextTurnout;
-  static  bool activate(int n, bool state);
+  static bool activate(int n, bool state);
   static Turnout* get(int);
   static bool remove(int);
   static bool isActive(int);
+  static void setActive(int n, bool state);
   static void load();
   static void store();
-  static Turnout *createVpin(int id, VPIN vpin, int initialState=0);
-  static Turnout *createDCC(int id , int address , int subAddress);
   static Turnout *createServo(int id , VPIN vpin , uint16_t activeAngle, uint16_t inactiveAngle, uint8_t profile=1, uint8_t initialState=0);
+  static Turnout *createVpin(int id, VPIN vpin, uint8_t initialState=0);
+  static Turnout *createDCC(int id, uint16_t address, uint8_t subAddress);
+  static Turnout *createLCN(int id, uint8_t initialState=0);
   static Turnout *create(int id, int params, int16_t p[]);
   static Turnout *create(int id);
   void activate(bool state);
+  void setActive(bool state);
+  bool isActive();
   static void printAll(Print *);
   void print(Print *stream);
 #ifdef EESTOREDEBUG
