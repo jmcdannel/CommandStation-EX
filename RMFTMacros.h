@@ -19,26 +19,22 @@
 #ifndef RMFTMacros_H
 #define RMFTMacros_H
 
-enum OPCODE {OPCODE_THROW,OPCODE_CLOSE,
-             OPCODE_FWD,OPCODE_REV,OPCODE_SPEED,OPCODE_INVERT_DIRECTION,
-             OPCODE_RESERVE,OPCODE_FREE,
-             OPCODE_AT,OPCODE_AFTER,
-             OPCODE_LATCH,OPCODE_UNLATCH,OPCODE_SET,OPCODE_RESET,
-             OPCODE_IF,OPCODE_IFNOT,OPCODE_ENDIF,OPCODE_IFRANDOM,
-             OPCODE_DELAY,OPCODE_DELAYMINS,OPCODE_RANDWAIT,
-             OPCODE_FON, OPCODE_FOFF,
-             OPCODE_RED,OPCODE_GREEN,OPCODE_AMBER,
-             OPCODE_PAD,OPCODE_FOLLOW,OPCODE_ENDROUTE,
-             OPCODE_PROGTRACK,OPCODE_READ_LOCO1,OPCODE_READ_LOCO2,
-             OPCODE_SCHEDULE,OPCODE_SETLOCO,
-             OPCODE_PAUSE, OPCODE_RESUME, 
-             OPCODE_ROUTE,OPCODE_ENDROUTES
-             };
-
+// The entire automation script is contained within a byte arrayRMFT2::RouteCode[]
+// made up of opcode and parameter pairs.
+// The array is normally built using the macros below as this makes it easier 
+// to manage the cases where:
+// - padding must be applied to ensure the correct alignment of the next instruction
+// - large parameters must be split up
+// - multiple parameters aligned correctly
+// - a single macro requires multiple operations 
 
 
 #define ROUTES const  FLASH  byte RMFT2::RouteCode[] = {
+#define AUTOMATION(id)  OPCODE_AUTOMATION, id, 
 #define ROUTE(id)  OPCODE_ROUTE, id, 
+#define SEQUENCE(id)  OPCODE_SEQUENCE, id, 
+#define ENDAUTOMATION OPCODE_ENDROUTE,0,
+#define ENDSEQUENCE OPCODE_ENDROUTE,0,
 #define ENDROUTE OPCODE_ENDROUTE,0,
 #define ENDROUTES OPCODE_ENDROUTES,0 };
  
@@ -69,6 +65,7 @@ enum OPCODE {OPCODE_THROW,OPCODE_CLOSE,
 #define RESUME OPCODE_RESUME,0,
 #define REV(speed) OPCODE_REV,speed,
 #define SCHEDULE(route) OPCODE_SCHEDULE,route,
+#define SERVO(id,position,speed) OPCODE_SERVO,id,OPCODE_PAD,position/4,OPCODE_PAD,speed,
 #define SETLOCO(loco) OPCODE_SETLOCO,loco>>7,OPCODE_PAD,loco&0x7F,
 #define SET(sensor_id) OPCODE_SET,sensor_id,
 #define SPEED(speed) OPCODE_SPEED,speed,
@@ -77,5 +74,29 @@ enum OPCODE {OPCODE_THROW,OPCODE_CLOSE,
 #define THROW(id)  OPCODE_THROW,id,
 #define CLOSE(id)  OPCODE_CLOSE,id,
 #define UNLATCH(sensor_id) OPCODE_UNLATCH,sensor_id,
+   
+// The following are the operation codes (or instructions) for a kind of virtual machine.
+// Each instruction is normally 2 bytes long with an operation code followed by a parameter.
+// In cases where more than one parameter is required, the first parameter is followed by one  
+// or more OPCODE_PAD instructions with the subsequent parameters. This wastes a byte but makes 
+// searching easier as a parameter can never be confused with an opcode. 
+// 
+enum OPCODE {OPCODE_THROW,OPCODE_CLOSE,
+             OPCODE_FWD,OPCODE_REV,OPCODE_SPEED,OPCODE_INVERT_DIRECTION,
+             OPCODE_RESERVE,OPCODE_FREE,
+             OPCODE_AT,OPCODE_AFTER,
+             OPCODE_LATCH,OPCODE_UNLATCH,OPCODE_SET,OPCODE_RESET,
+             OPCODE_IF,OPCODE_IFNOT,OPCODE_ENDIF,OPCODE_IFRANDOM,
+             OPCODE_DELAY,OPCODE_DELAYMINS,OPCODE_RANDWAIT,
+             OPCODE_FON, OPCODE_FOFF,
+             OPCODE_RED,OPCODE_GREEN,OPCODE_AMBER,
+             OPCODE_SERVO,
+             OPCODE_PAD,OPCODE_FOLLOW,OPCODE_ENDROUTE,
+             OPCODE_PROGTRACK,OPCODE_READ_LOCO1,OPCODE_READ_LOCO2,
+             OPCODE_SCHEDULE,OPCODE_SETLOCO,
+             OPCODE_PAUSE, OPCODE_RESUME, 
+             OPCODE_ROUTE,OPCODE_AUTOMATION,OPCODE_SEQUENCE,OPCODE_ENDROUTES
+             };
+
 
 #endif

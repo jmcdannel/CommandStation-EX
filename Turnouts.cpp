@@ -207,12 +207,15 @@ void Turnout::load(){
       case TURNOUT_VPIN:
         tt=createVpin(data.id, data.vpinData.vpin, lastKnownState);  // VPIN-based turnout
         break;
+       
+      default:
+       tt=NULL;
     }
     if (tt) tt->num = EEStore::pointer() + offsetof(TurnoutData, tStatus);  // Save pointer to tStatus byte within EEPROM
     // Advance by the actual size of the individual turnout struct.
     EEStore::advance(data.size);
 #ifdef EESTOREDEBUG
-    print(tt);
+    if (tt) print(tt);
 #endif
   }
 }

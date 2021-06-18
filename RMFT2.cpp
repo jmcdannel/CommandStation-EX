@@ -147,12 +147,10 @@ bool RMFT2::parseSlash(Print * stream, byte & paramCount, int16_t p[]) {
                  
             case HASH_KEYWORD_SCHEDULE: // </ SCHEDULE [cab] route >
                  if (paramCount<2 || paramCount>3) return false;
-                 {                 
-                  RMFT2 * newt=new RMFT2((paramCount==2) ? p[1] : p[2]);
-                  newt->loco=(paramCount==2)? 0 : p[1];                    
-                  newt->speedo=0;
-                  newt->forward=true;
-                  newt->invert=false;
+                 {
+                  byte route=(paramCount==2) ? p[1] : p[2];
+                  uint16_t cab=(paramCount==2)? 0 : p[1];                 
+                  new RMFT2(route,cab);                    
                  }
               return true;
                  
@@ -186,16 +184,34 @@ bool RMFT2::parseSlash(Print * stream, byte & paramCount, int16_t p[]) {
           }
     }
 
+void RMFT2::emitWithrottleRouteList(Print* stream) {
+  bool first=true;
+  for (int pcounter=0;;pcounter+=2) {
+    byte opcode=GETFLASH(RMFT2::RouteCode+pcounter);
+    if (opcode==OPCODE_ENDROUTES) break;
+    if (opcode==OPCODE_ROUTE || opcode==OPCODE_AUTOMATION) {
+      byte  route=GETFLASH(RMFT2::RouteCode+pcounter+1);
+      if (first) {
+        first=false;
+        StringFormatter::send(stream,F("PRT]\\[Routes}|{Route]\\[Active}|{2]\\[Inactive}|{4\nPRL]\\["));
+      }
+      if (opcode==OPCODE_AUTOMATION) StringFormatter::send(stream,F("A%d}|{Auto_%d}|{"), route, route);
+      else                           StringFormatter::send(stream,F("R%d}|{Route_%d}|{"), route, route);
+      
+    }
+  }
+  
+}
 
-
-// An instance of this object guides a loco through a jouerney, or simply animates something. 
-RMFT2::RMFT2(byte route) {
+// An instance of this object guides a loco through a journey, or simply animates something. 
+RMFT2::RMFT2(byte route, uint16_t cab) {
   progCounter=locateRouteStart(route);
   delayTime=0;
-  loco=0;
+  loco=cab;
   speedo=0;
   forward=true;
-
+  invert=false;
+  
   // chain into ring of RMFTs
   if (loopTask==NULL) {
     loopTask=this;
@@ -225,7 +241,8 @@ int RMFT2::locateRouteStart(short _route) {
   for (int pcounter=0;;pcounter+=2) {
     byte opcode=GETFLASH(RMFT2::RouteCode+pcounter);
     if (opcode==OPCODE_ENDROUTES) return -1;
-    if (opcode==OPCODE_ROUTE) if( _route==GETFLASH(RMFT2::RouteCode+pcounter+1)) return pcounter;
+    if ((opcode==OPCODE_ROUTE || opcode==OPCODE_AUTOMATION || opcode==OPCODE_SEQUENCE) 
+       &&  _route==GETFLASH(RMFT2::RouteCode+pcounter+1)) return pcounter;
   }
   return -1;
 }
@@ -323,7 +340,7 @@ void RMFT2::loop2() {
       break;
       
     case OPCODE_RESERVE:
-        if (getFlag(operand,SECTION_FLAG)) {
+      if (getFlag(operand,SECTION_FLAG)) {
         driveLoco(0);
         delayMe(500);
         return;
@@ -483,7 +500,15 @@ void RMFT2::loop2() {
        break;
        
        case OPCODE_ROUTE:
-          if (diag) DIAG(F("RMFT Starting Route %d"),operand);
+          if (diag) DIAG(F("RMFT ROUTE(%d)"),operand);
+          break;
+
+       case OPCODE_AUTOMATION:
+          if (diag) DIAG(F("RMFT AUTOMATION(%d)"),operand);
+          break;
+
+       case OPCODE_SEQUENCE:
+          if (diag) DIAG(F("RMFT SEQUENCE(%d)"),operand);
           break;
 
        case OPCODE_PAD:

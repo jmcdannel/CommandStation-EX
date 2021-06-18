@@ -37,16 +37,16 @@
    public:
     static void begin();
     static void loop();
-    RMFT2(byte route);
+    RMFT2(byte route, uint16_t cab=0);
     ~RMFT2();
     static void readLocoCallback(int cv);
-  private: 
+    static void emitWithrottleRouteList(Print* stream);   
+private: 
     static void ComandFilter(Print * stream, byte & opcode, byte & paramCount, int p[]);
     static bool parseSlash(Print * stream, byte & paramCount, int p[]) ;
     static void streamFlags(Print* stream);
     static void setFlag(byte id,byte onMask, byte OffMask=0);
-    static byte getFlag(byte id,byte mask);    
-
+    static byte getFlag(byte id,byte mask);   
     static int locateRouteStart(short _route);
     static int progtrackLocoId;
     static RMFT2 * loopTask;
