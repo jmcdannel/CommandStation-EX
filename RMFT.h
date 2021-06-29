@@ -1,8 +1,8 @@
 #ifndef RMFT_H
 #define RMFT_H
 
-#if __has_include ( "myAutomation.h")
-#include "RMFT2.h"
+#if defined(RMFT_ACTIVE)
+ #include "RMFT2.h"
 
 class RMFT {
   public:
@@ -11,7 +11,6 @@ class RMFT {
 };
 
   #include "myAutomation.h"
-  #define RMFT_ACTIVE
 #endif
 
 #endif

@@ -2,8 +2,10 @@
  *  The presence of a file calle "myAutomation.h" brings EX-RAIL code into
  *  the command station.
  *  The auotomation may have multiple concurrent tasks. 
- *  A task may drive one loco through a ROUTE or may simply 
- *  automate some other part of the layout without any loco.
+ *  A task may 
+ *  - Act as a ROUTE setup macro for a user to drive over 
+ *  - drive a loco through an AUTOMATION 
+ *  - automate some cosmetic part of the layout without any loco.
  *  
  *  At startup, a single task is created to execute the first 
  *  instruction after ROUTES. 
@@ -13,6 +15,12 @@
  *  Where the loco id is not known at compile time, a new task 
  *  can be creatd with the command:
  *  </ SCHEDULE [cab] route> 
+ *  
+ *  A ROUTE, AUTOMATION or SEQUENCE are internally identical in ExRail terms  
+ *  but are just represented differently to a Withrottle user:
+ *  ROUTE(n) - as Route_n .. to setup a route through a layout
+ *  AUTOMATION(n) as Auto_n .. to send the current loco off along an automated journey
+ *  SEQUENCE(n) is not visible to Withrottle.
  *  
  */
 
@@ -29,7 +37,7 @@ ROUTES   // myAutomation must start with the ROUTES instruction
  *  S10                    S11                   
  *  === START->================
  */
-   ROUTE(1) 
+   AUTOMATION(1) 
      DELAY(100)   // wait 10 seconds
      FON(3)       // Set Loco Function 3, Horn on
      DELAY(10)    // wait 1 second
@@ -45,7 +53,7 @@ ROUTES   // myAutomation must start with the ROUTES instruction
      FOFF(2)      // Bell off 
      FOLLOW(1)    // and follow route 1 again
    
-/* ROUTE(2) is an automation example for a single loco Y shaped journey
+/* AUTOMATION(2) is an automation example for a single loco Y shaped journey
  *  S1,S2,S3 are sensors, T4 is a turnout
  *  
  *  S3                      T4                            S1
@@ -56,7 +64,7 @@ ROUTES   // myAutomation must start with the ROUTES instruction
  *  
  *  Train runs from START to S1, back to S2, again to S1, Back to start.
  */
-  ROUTE(2)
+  AUTOMATION(2)
    FWD(60)     // go forward at DCC speed 60 
    AT(1) STOP  // when we get to sensor 1 
    DELAY(100)  // wait 10 seconds 

@@ -184,6 +184,11 @@ bool RMFT2::parseSlash(Print * stream, byte & paramCount, int16_t p[]) {
           }
     }
 
+
+// This emits Routes and Automations to Withrottle
+// Automations are given a state to set the button to "handoff" which implies 
+// handing over the loco to the automation.
+// Routes are given "Set" buttons and do not cause the loco to be handed over. 
 void RMFT2::emitWithrottleRouteList(Print* stream) {
   bool first=true;
   for (int pcounter=0;;pcounter+=2) {
@@ -193,14 +198,13 @@ void RMFT2::emitWithrottleRouteList(Print* stream) {
       byte  route=GETFLASH(RMFT2::RouteCode+pcounter+1);
       if (first) {
         first=false;
-        StringFormatter::send(stream,F("PRT]\\[Routes}|{Route]\\[Active}|{2]\\[Inactive}|{4\nPRL]\\["));
+        StringFormatter::send(stream,F("PRT]\\[Routes}|{Route]\\[Set}|{2]\\[Handoff}|{4\nPRL"));
       }
-      if (opcode==OPCODE_AUTOMATION) StringFormatter::send(stream,F("A%d}|{Auto_%d}|{"), route, route);
-      else                           StringFormatter::send(stream,F("R%d}|{Route_%d}|{"), route, route);
-      
+      if (opcode==OPCODE_AUTOMATION) StringFormatter::send(stream,F("]\\[A%d}|{Auto_%d}|{4"), route, route);
+      else                           StringFormatter::send(stream,F("]\\[R%d}|{Route_%d}|{2"), route, route);      
     }
   }
-  
+  if (!first) StringFormatter::send(stream,F("\n"));  // end of route list 
 }
 
 // An instance of this object guides a loco through a journey, or simply animates something. 

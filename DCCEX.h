@@ -21,9 +21,8 @@
 #include "Sensors.h"
 #include "Outputs.h"
 
-#if __has_include ( "myAutomation.h")
-  #include "RMFT.h"
-  #define RMFT_ACTIVE
+#if defined(RMFT_ACTIVE)
+ #include "RMFT.h"
 #endif
     
 #endif

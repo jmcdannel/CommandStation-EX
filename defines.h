@@ -48,3 +48,7 @@
 // Currently only devices which can communicate at 115200 are supported.
 //
 #define WIFI_SERIAL_LINK_SPEED 115200
+
+#if __has_include ( "myAutomation.h")
+  #define RMFT_ACTIVE
+#endif

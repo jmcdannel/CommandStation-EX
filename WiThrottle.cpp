@@ -40,6 +40,7 @@
  *  WiThrottle.h sets the max locos per client at 10, this is ok to increase but requires just an extra 3 bytes per loco per client.      
 */
 #include <Arduino.h>
+#include "defines.h"
 #include "WiThrottle.h"
 #include "DCC.h"
 #include "DCCWaveform.h"
@@ -48,10 +49,7 @@
 #include "DIAG.h"
 #include "GITHUB_SHA.h"
 #include "version.h"
-#if __has_include ( "myAutomation.h")
-  #include "RMFT2.h"
-  #define RMFT_ACTIVE
-#endif
+#include "RMFT2.h"
 
 
 #define LOOPLOCOS(THROTTLECHAR, CAB)  for (int loco=0;loco<MAX_MY_LOCO;loco++) \
@@ -152,7 +150,7 @@ void WiThrottle::parse(RingStream * stream, byte * cmdx) {
               StringFormatter::send(stream,F("PPA%x\n"),DCCWaveform::mainTrack.getPowerMode()==POWERMODE::ON);
               lastPowerState = (DCCWaveform::mainTrack.getPowerMode()==POWERMODE::ON); //remember power state sent for comparison later
             }
-#ifdef RMFT_ACTIVE
+#if defined(RMFT_ACTIVE)
             else if (cmd[1]=='R' && cmd[2]=='A' && cmd[3]=='2' ) { // Route activate
               // exrail routes are RA2Rn , Animations are RA2An 
               int route=getInt(cmd+5);
