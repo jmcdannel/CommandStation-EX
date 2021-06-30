@@ -20,9 +20,7 @@
 #include "Turnouts.h"
 #include "Sensors.h"
 #include "Outputs.h"
+#include "RMFT.h"
 
-#if defined(RMFT_ACTIVE)
- #include "RMFT.h"
-#endif
     
 #endif

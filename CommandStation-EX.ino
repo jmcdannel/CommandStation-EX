@@ -43,13 +43,7 @@
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #include "DCCEX.h"
-
-#if __has_include ( "myAutomation.h")
-  #include "RMFT.h"
-  #define RMFT_ACTIVE
-#endif
 
 // Create a serial command parser for the USB connection, 
 // This supports JMRI or manual diagnostics and commands
@@ -90,10 +84,9 @@ void setup()
  
   DCC::begin(MOTOR_SHIELD_TYPE); 
          
-  #if defined(RMFT_ACTIVE) 
-      RMFT::begin();
-  #endif
-
+  // Start RMFT (ignored if no automnation)
+  RMFT::begin();
+  
   // Link to and call mySetup() function (if defined in the build in mySetup.cpp).
   //  The contents will depend on the user's system hardware configuration.
   //  The mySetup.cpp file is a standard C++ module so has access to all of the DCC++EX APIs.
@@ -137,9 +130,7 @@ void loop()
   EthernetInterface::loop();
 #endif
 
-#if defined(RMFT_ACTIVE) 
-  RMFT::loop();
-#endif
+  RMFT::loop();  // ignored if no automation
 
   #if defined(LCN_SERIAL) 
       LCN::loop();
