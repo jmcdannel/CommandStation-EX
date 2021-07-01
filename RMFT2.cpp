@@ -56,7 +56,7 @@ byte RMFT2::flags[MAX_FLAGS];
   DCCEXParser::setRMFTFilter(RMFT2::ComandFilter);
   for (int f=0;f<MAX_FLAGS;f++) flags[f]=0;
   int pcounter;
-  for (pcounter=0; GETFLASH(RMFT2::RouteCode+pcounter)!=OPCODE_ENDROUTES; pcounter+=2);
+  for (pcounter=0; GETFLASH(RMFT2::RouteCode+pcounter)!=OPCODE_ENDEXRAIL; pcounter+=2);
   pcounter+=2; // include ENDROUTES opcode 
   DIAG(F("RMFT myAutomation=%db, MAX_FLAGS=%d"), pcounter,MAX_FLAGS);
   new RMFT2(0); // add the startup route
@@ -193,7 +193,7 @@ void RMFT2::emitWithrottleRouteList(Print* stream) {
   bool first=true;
   for (int pcounter=0;;pcounter+=2) {
     byte opcode=GETFLASH(RMFT2::RouteCode+pcounter);
-    if (opcode==OPCODE_ENDROUTES) break;
+    if (opcode==OPCODE_ENDEXRAIL) break;
     if (opcode==OPCODE_ROUTE || opcode==OPCODE_AUTOMATION) {
       byte  route=GETFLASH(RMFT2::RouteCode+pcounter+1);
       if (first) {
@@ -245,7 +245,7 @@ int RMFT2::locateRouteStart(short _route) {
   if (_route==0) return 0; // Route 0 is always start of ROUTES for default startup 
   for (int pcounter=0;;pcounter+=2) {
     byte opcode=GETFLASH(RMFT2::RouteCode+pcounter);
-    if (opcode==OPCODE_ENDROUTES) return -1;
+    if (opcode==OPCODE_ENDEXRAIL) return -1;
     if ((opcode==OPCODE_ROUTE || opcode==OPCODE_AUTOMATION || opcode==OPCODE_SEQUENCE) 
        &&  _route==GETFLASH(RMFT2::RouteCode+pcounter+1)) return pcounter;
   }
@@ -476,8 +476,8 @@ void RMFT2::loop2() {
       progCounter=callStack[--stackDepth];
       return;
       
-    case OPCODE_ENDROUTE:
-    case OPCODE_ENDROUTES:
+    case OPCODE_ENDTASK:
+    case OPCODE_ENDEXRAIL:
       delete this;  // removes this task from the ring buffer
       return;
       
