@@ -28,6 +28,7 @@
 // - multiple parameters aligned correctly
 // - a single macro requires multiple operations 
 
+#define I_SPLIT(val) val>>7,OPCODE_PAD,val&0x7F
 
 #define ROUTES const  FLASH  byte RMFT2::RouteCode[] = {
 #define AUTOMATION(id)  OPCODE_AUTOMATION, id, 
@@ -41,6 +42,7 @@
 #define AFTER(sensor_id) OPCODE_AT,sensor_id,OPCODE_AFTER,sensor_id,
 #define AMBER(signal_id) OPCODE_AMBER,signal_id,
 #define AT(sensor_id) OPCODE_AT,sensor_id,
+#define CALL(route) OPCODE_CALL,route,
 #define DELAY(mindelay) OPCODE_DELAY,mindelay,
 #define DELAYMINS(mindelay) OPCODE_DELAYMINS,mindelay,
 #define DELAYRANDOM(mindelay,maxdelay) OPCODE_DELAY,mindelay,OPCODE_RANDWAIT,maxdelay-mindelay,
@@ -63,10 +65,11 @@
 #define RESERVE(blockid) OPCODE_RESERVE,blockid,
 #define RESET(sensor_id) OPCODE_RESET,sensor_id,
 #define RESUME OPCODE_RESUME,0,
+#define RETURN OPCODE_RETURN,0,
 #define REV(speed) OPCODE_REV,speed,
 #define SCHEDULE(route) OPCODE_SCHEDULE,route,
 #define SERVO(id,position,speed) OPCODE_SERVO,id,OPCODE_PAD,position/4,OPCODE_PAD,speed,
-#define SETLOCO(loco) OPCODE_SETLOCO,loco>>7,OPCODE_PAD,loco&0x7F,
+#define SETLOCO(loco) OPCODE_SETLOCO,I_SPLIT(loco),
 #define SET(sensor_id) OPCODE_SET,sensor_id,
 #define SPEED(speed) OPCODE_SPEED,speed,
 #define STOP OPCODE_SPEED,0, 
@@ -91,7 +94,7 @@ enum OPCODE {OPCODE_THROW,OPCODE_CLOSE,
              OPCODE_FON,OPCODE_FOFF,
              OPCODE_RED,OPCODE_GREEN,OPCODE_AMBER,
              OPCODE_SERVO,
-             OPCODE_PAD,OPCODE_FOLLOW,OPCODE_ENDROUTE,
+             OPCODE_PAD,OPCODE_FOLLOW,OPCODE_ENDROUTE,OPCODE_CALL,OPCODE_RETURN,
              OPCODE_PROGTRACK,OPCODE_READ_LOCO1,OPCODE_READ_LOCO2,
              OPCODE_SCHEDULE,OPCODE_SETLOCO,
              OPCODE_PAUSE, OPCODE_RESUME, 

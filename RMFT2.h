@@ -24,6 +24,8 @@
   // Flag bits for status of hardware and TPL
   static const short SECTION_FLAG = 0x01;
   static const short SENSOR_FLAG = 0x02;
+
+  static const byte  MAX_STACK_DEPTH=4;
  
 #if (defined(ARDUINO_AVR_MEGA) || defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_SAMD_ZERO))
    static const short MAX_FLAGS=256;
@@ -65,7 +67,8 @@ private:
    static const  FLASH  byte RouteCode[];
    static byte flags[MAX_FLAGS];
  
- // Local variables
+ // Local variables - exist for each instance/task 
+    RMFT2 *next;   // loop chain 
     int progCounter;    // Byte offset of next route opcode in ROUTES table
     unsigned long delayStart; // Used by opcodes that must be recalled before completing
     unsigned long waitAfter; // Used by OPCODE_AFTER
@@ -74,6 +77,7 @@ private:
     bool forward;
     bool invert;
     int speedo;
-    RMFT2 *next;   // loop chain 
+    byte stackDepth;
+    int callStack[MAX_STACK_DEPTH];
 };
 #endif

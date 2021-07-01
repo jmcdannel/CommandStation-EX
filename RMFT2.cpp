@@ -215,7 +215,8 @@ RMFT2::RMFT2(byte route, uint16_t cab) {
   speedo=0;
   forward=true;
   invert=false;
-  
+  stackDepth=0;
+   
   // chain into ring of RMFTs
   if (loopTask==NULL) {
     loopTask=this;
@@ -453,6 +454,26 @@ void RMFT2::loop2() {
     case OPCODE_FOLLOW:
       progCounter=locateRouteStart(operand);
       if (progCounter<0) delete this; 
+      return;
+  
+    case OPCODE_CALL:
+      if (stackDepth==MAX_STACK_DEPTH) {
+        DIAG(F("RMFT stack overflow"));
+        delete this;
+        return;
+      }
+      callStack[stackDepth++]=progCounter;
+      progCounter=locateRouteStart(operand);
+      if (progCounter<0) delete this; 
+      return;
+
+    case OPCODE_RETURN:
+      if (stackDepth==0) {
+        DIAG(F("RMFT stack underflow"));
+        delete this;
+        return;
+      }
+      progCounter=callStack[--stackDepth];
       return;
       
     case OPCODE_ENDROUTE:
