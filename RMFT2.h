@@ -53,7 +53,7 @@ private:
     static int progtrackLocoId;
     static RMFT2 * loopTask;
     static RMFT2 * pausingTask;
-    void delayMe(int millisecs);
+    void delayMe(long millisecs);
     void driveLoco(byte speedo);
     bool readSensor(short id);
     bool skipIfBlock();
@@ -63,7 +63,8 @@ private:
     bool doManual();
     void loop2();
     void kill(FSH * reason=NULL,int operand=0);          
-    
+    int  getIntOperand(byte operand1);
+
    static bool diag;
    static const  FLASH  byte RouteCode[];
    static byte flags[MAX_FLAGS];
@@ -73,7 +74,7 @@ private:
     int progCounter;    // Byte offset of next route opcode in ROUTES table
     unsigned long delayStart; // Used by opcodes that must be recalled before completing
     unsigned long waitAfter; // Used by OPCODE_AFTER
-    unsigned int  delayTime;
+    unsigned long  delayTime;
     int loco;
     bool forward;
     bool invert;

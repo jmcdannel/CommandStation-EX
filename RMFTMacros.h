@@ -28,7 +28,7 @@
 // - multiple parameters aligned correctly
 // - a single macro requires multiple operations 
 
-#define I_SPLIT(val) val>>7,OPCODE_PAD,val&0x7F
+#define I_SPLIT(val) (val)>>7,OPCODE_PAD,(val)&0x7F
 
 #define EXRAIL const  FLASH  byte RMFT2::RouteCode[] = {
 #define AUTOMATION(id)  OPCODE_AUTOMATION, id, 
@@ -41,9 +41,9 @@
 #define AMBER(signal_id) OPCODE_AMBER,signal_id,
 #define AT(sensor_id) OPCODE_AT,sensor_id,
 #define CALL(route) OPCODE_CALL,route,
-#define DELAY(mindelay) OPCODE_DELAY,mindelay,
+#define DELAY(mindelay) OPCODE_DELAY,I_SPLIT(mindelay),
 #define DELAYMINS(mindelay) OPCODE_DELAYMINS,mindelay,
-#define DELAYRANDOM(mindelay,maxdelay) OPCODE_DELAY,mindelay,OPCODE_RANDWAIT,maxdelay-mindelay,
+#define DELAYRANDOM(mindelay,maxdelay) OPCODE_DELAY,I_SPLIT(mindelay),OPCODE_RANDWAIT,I_SPLIT(maxdelay-mindelay),
 #define ENDIF  OPCODE_ENDIF,0,
 #define FOFF(func) OPCODE_FOFF,func,
 #define FOLLOW(route) OPCODE_FOLLOW,route,

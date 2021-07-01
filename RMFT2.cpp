@@ -425,7 +425,7 @@ void RMFT2::loop2() {
       break;
     
     case OPCODE_DELAY:
-      delayMe(operand*100);
+      delayMe(getIntOperand(operand)*100);
       break;
    
     case OPCODE_DELAYMINS:
@@ -433,7 +433,7 @@ void RMFT2::loop2() {
       break;
     
     case OPCODE_RANDWAIT:
-      delayMe((int)random(operand*10));
+      delayMe((long)random(getIntOperand(operand)*10));
       break;
     
     case OPCODE_RED:
@@ -516,10 +516,7 @@ void RMFT2::loop2() {
        
        case OPCODE_SETLOCO:
            {
-            // two bytes of loco address are in the next two OPCODE_PAD operands
-             int operand2 =  GETFLASH(RMFT2::RouteCode+progCounter+3);
-             progCounter+=2; // Skip the extra two instructions
-             loco=operand<<7 | operand2;
+             loco=getIntOperand(operand); 
              speedo=0;
              forward=true;
              invert=false;
@@ -550,7 +547,7 @@ void RMFT2::loop2() {
     progCounter+=2;
 }
 
-void RMFT2::delayMe(int delay) {
+void RMFT2::delayMe(long delay) {
      delayTime=delay;
      delayStart=millis();
 }
@@ -571,4 +568,11 @@ void RMFT2::kill(FSH * reason, int operand) {
      if (reason) DIAG(F("RMFT ERROR at pc=%d, cab=%d, %S %d"), progCounter,loco, reason, operand);
      else if (diag) DIAG(F("ENDTASK at pc=%d"), progCounter); 
      delete this;
+}
+
+int RMFT2::getIntOperand(byte operand1) {
+   // second part of long operands follow 3 bytes after the current progCounter
+   int operand2 =  GETFLASH(RMFT2::RouteCode+progCounter+3);
+   progCounter+=2; // Skip the OPCODE_PAD and its operand. 
+   return (operand1<<7) | operand2;
 }
