@@ -56,12 +56,13 @@ private:
     void delayMe(int millisecs);
     void driveLoco(byte speedo);
     bool readSensor(short id);
-    void skipIfBlock();
+    bool skipIfBlock();
     bool readLoco();
     void showManual();
     void showProg(bool progOn);
     bool doManual();
-    void loop2();          
+    void loop2();
+    void kill(FSH * reason=NULL,int operand=0);          
     
    static bool diag;
    static const  FLASH  byte RouteCode[];

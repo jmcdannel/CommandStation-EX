@@ -269,12 +269,16 @@ bool RMFT2::readSensor(short id) {
   return s==1;
 }
 
-void RMFT2::skipIfBlock() {
+bool RMFT2::skipIfBlock() {
+  // returns false if killed
   short nest = 1;
   while (nest > 0) {
     progCounter += 2;
     byte opcode =  GETFLASH(RMFT2::RouteCode+progCounter);;
     switch(opcode) {
+      case OPCODE_ENDEXRAIL: 
+           kill(F("missing ENDIF"), nest);
+           return false;  
       case OPCODE_IF:
       case OPCODE_IFNOT:
       case OPCODE_IFRANDOM:
@@ -287,6 +291,7 @@ void RMFT2::skipIfBlock() {
       break;
     }
   }
+  return true; 
 }
 
 
@@ -405,15 +410,15 @@ void RMFT2::loop2() {
           break;        
     
     case OPCODE_IF: // do next operand if sensor set
-      if (!readSensor(operand)) skipIfBlock();
+      if (!readSensor(operand)) if (!skipIfBlock()) return;
       break;
     
     case OPCODE_IFNOT: // do next operand if sensor not set
-      if (readSensor(operand)) skipIfBlock();
+      if (readSensor(operand)) if (!skipIfBlock()) return;
       break;
    
     case OPCODE_IFRANDOM: // do block on random percentage
-      if (random(100)>=operand) skipIfBlock();
+      if (random(100)>=operand) if (!skipIfBlock()) return;
       break;
     
     case OPCODE_ENDIF:
@@ -453,24 +458,22 @@ void RMFT2::loop2() {
 
     case OPCODE_FOLLOW:
       progCounter=locateRouteStart(operand);
-      if (progCounter<0) delete this; 
+      if (progCounter<0) kill(F("FOLLOW unknown"), operand); 
       return;
   
     case OPCODE_CALL:
       if (stackDepth==MAX_STACK_DEPTH) {
-        DIAG(F("RMFT stack overflow"));
-        delete this;
+        kill(F("CALL stack"), stackDepth);
         return;
       }
       callStack[stackDepth++]=progCounter;
       progCounter=locateRouteStart(operand);
-      if (progCounter<0) delete this; 
+      if (progCounter<0) kill(F("CALL unknown"),operand); 
       return;
 
     case OPCODE_RETURN:
       if (stackDepth==0) {
-        DIAG(F("RMFT stack underflow"));
-        delete this;
+        kill(F("RETURN stack"));
         return;
       }
       progCounter=callStack[--stackDepth];
@@ -478,7 +481,7 @@ void RMFT2::loop2() {
       
     case OPCODE_ENDTASK:
     case OPCODE_ENDEXRAIL:
-      delete this;  // removes this task from the ring buffer
+      kill();
       return;
       
     case OPCODE_PROGTRACK:
@@ -562,4 +565,10 @@ void RMFT2::setFlag(byte id,byte onMask, byte offMask) {
 byte RMFT2::getFlag(byte id,byte mask) {
    if (FLAGOVERFLOW(id)) return 0; // Outside UNO range limit
    return flags[id]&mask;   
+}
+
+void RMFT2::kill(FSH * reason, int operand) {
+     if (reason) DIAG(F("RMFT ERROR at pc=%d, cab=%d, %S %d"), progCounter,loco, reason, operand);
+     else if (diag) DIAG(F("ENDTASK at pc=%d"), progCounter); 
+     delete this;
 }
