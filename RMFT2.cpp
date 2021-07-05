@@ -56,8 +56,20 @@ byte RMFT2::flags[MAX_FLAGS];
   DCCEXParser::setRMFTFilter(RMFT2::ComandFilter);
   for (int f=0;f<MAX_FLAGS;f++) flags[f]=0;
   int pcounter;
-  for (pcounter=0; GETFLASH(RMFT2::RouteCode+pcounter)!=OPCODE_ENDEXRAIL; pcounter+=2);
-  pcounter+=2; // include ENDROUTES opcode 
+  // first pass startup, define any turnouts or servos and count size.
+  for (pcounter=0;; pcounter+=2){
+     byte opcode=GETFLASH(RMFT2::RouteCode+pcounter);
+     if (opcode==OPCODE_ENDEXRAIL) break;
+     if (opcode==OPCODE_TURNOUT) {
+      byte id=GETFLASH(RMFT2::RouteCode+pcounter+1);
+      pcounter+=2;
+      byte addr=GETFLASH(RMFT2::RouteCode+pcounter+1);
+      pcounter+=2;
+      byte subAddr=GETFLASH(RMFT2::RouteCode+pcounter+1);
+      Turnout::createDCC(id,addr,subAddr);
+     }
+  } 
+  pcounter+=2; // include ENDROUTES opcode
   DIAG(F("RMFT myAutomation=%db, MAX_FLAGS=%d"), pcounter,MAX_FLAGS);
   new RMFT2(0); // add the startup route
 }
@@ -263,8 +275,7 @@ void RMFT2::driveLoco(byte speed) {
 
 bool RMFT2::readSensor(short id) {
   if (getFlag(id,SENSOR_FLAG)) return true; // latched on
-  Sensor* sensor= Sensor::get(id); // real hardware sensor (-1 if not exists )
-  short s= sensor? sensor->active : -1;
+  short s= IODevice::read(id);
   if (s==1 && diag) DIAG(F("RMFT Sensor %d hit"),id);
   return s==1;
 }
@@ -437,15 +448,15 @@ void RMFT2::loop2() {
       break;
     
     case OPCODE_RED:
-      // TODO Layout::setSignal(operand,'R');
+      doSignal(operand,true,false,false);
       break;
     
     case OPCODE_AMBER:
-      // TODO Layout::setSignal(operand,'A');
+      doSignal(operand,false,true,false);
       break;
     
     case OPCODE_GREEN:
-       // TODO Layout::setSignal(operand,'G');
+      doSignal(operand,false,false,true);
       break;
        
     case OPCODE_FON:      
@@ -484,8 +495,12 @@ void RMFT2::loop2() {
       kill();
       return;
       
-    case OPCODE_PROGTRACK:
-       DCC::setProgTrackSyncMain(operand>0);
+    case OPCODE_JOIN:
+       DCC::setProgTrackSyncMain(true);
+       break;
+
+    case OPCODE_UNJOIN:
+       DCC::setProgTrackSyncMain(false);
        break;
        
     case OPCODE_READ_LOCO1: // READ_LOCO is implemented as 2 separate opcodes
@@ -536,8 +551,9 @@ void RMFT2::loop2() {
           if (diag) DIAG(F("RMFT SEQUENCE(%d)"),operand);
           break;
 
-       case OPCODE_PAD:
-          // Just a padding for previous opcode needing >1 operad byte.
+       case OPCODE_PAD: // Just a padding for previous opcode needing >1 operad byte.
+       case OPCODE_SIGNAL: // Signal definition ignore at run time
+       case OPCODE_TURNOUT: // Turnout definition ignored at runtime
        break;
     
     default:
@@ -564,7 +580,7 @@ byte RMFT2::getFlag(byte id,byte mask) {
    return flags[id]&mask;   
 }
 
-void RMFT2::kill(FSH * reason, int operand) {
+void RMFT2::kill(const FSH * reason, int operand) {
      if (reason) DIAG(F("RMFT ERROR at pc=%d, cab=%d, %S %d"), progCounter,loco, reason, operand);
      else if (diag) DIAG(F("ENDTASK at pc=%d"), progCounter); 
      delete this;
@@ -576,3 +592,23 @@ int RMFT2::getIntOperand(byte operand1) {
    progCounter+=2; // Skip the OPCODE_PAD and its operand. 
    return (operand1<<7) | operand2;
 }
+
+/* static */ void RMFT2::doSignal(byte id,bool red, bool amber, bool green) { 
+  int pcounter;
+  for (pcounter=0;; pcounter+=2){
+     byte opcode=GETFLASH(RMFT2::RouteCode+pcounter);
+     if (opcode==OPCODE_ENDEXRAIL) return;
+     if (opcode!=OPCODE_SIGNAL) continue;
+     byte redpin=GETFLASH(RMFT2::RouteCode+pcounter+1);
+     if (redpin!=id)continue;
+     pcounter+=2;
+     byte amberpin=GETFLASH(RMFT2::RouteCode+pcounter+1);
+     pcounter+=2;
+     byte greenpin=GETFLASH(RMFT2::RouteCode+pcounter+1);
+     IODevice::write(redpin,red);
+     if (amberpin) IODevice::write(amberpin,amber);
+     if (greenpin) IODevice::write(amberpin,green);
+     return;
+   }
+  } 
+ 

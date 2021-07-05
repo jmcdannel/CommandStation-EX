@@ -51,6 +51,8 @@ private:
     static byte getFlag(byte id,byte mask);   
     static int locateRouteStart(short _route);
     static int progtrackLocoId;
+    static void doSignal(byte id,bool red, bool amber, bool green); 
+
     static RMFT2 * loopTask;
     static RMFT2 * pausingTask;
     void delayMe(long millisecs);
@@ -62,7 +64,7 @@ private:
     void showProg(bool progOn);
     bool doManual();
     void loop2();
-    void kill(FSH * reason=NULL,int operand=0);          
+    void kill(const FSH * reason=NULL,int operand=0);          
     int  getIntOperand(byte operand1);
 
    static bool diag;
