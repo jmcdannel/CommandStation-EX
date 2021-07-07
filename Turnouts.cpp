@@ -18,10 +18,11 @@
  *  You should have received a copy of the GNU General Public License
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
  */
-
+#include "defines.h"
 #include "Turnouts.h"
 #include "EEStore.h"
 #include "StringFormatter.h"
+#include "RMFT2.h"
 #ifdef EESTOREDEBUG
 #include "DIAG.h"
 #endif
@@ -127,7 +128,7 @@ void Turnout::activate(bool state) {
       // A LCN turnout is transmitted to the LCN master.
       LCN::send('T', data.id, state);
       return;   // The tStatus will be updated by a message from the LCN master, later.
-  } else {
+  }
     data.active = state;
     switch (data.type) {
       case TURNOUT_DCC:
@@ -145,7 +146,11 @@ void Turnout::activate(bool state) {
     // Save state if stored in EEPROM
     if (EEStore::eeStore->data.nTurnouts > 0 && num > 0) 
       EEPROM.put(num, data.tStatus);
-  }
+
+#if defined(RMFT_ACTIVE)
+  RMFT2::turnoutEvent(data.id, state);
+#endif  
+
 }
 
 ///////////////////////////////////////////////////////////////////////////////

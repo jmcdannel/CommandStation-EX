@@ -220,10 +220,14 @@ void RMFT2::emitWithrottleRouteList(Print* stream) {
 }
 
 // An instance of this object guides a loco through a journey, or simply animates something. 
-RMFT2::RMFT2(byte route, uint16_t cab) {
-  progCounter=locateRouteStart(route);
-  delayTime=0;
+RMFT2::RMFT2(byte route, uint16_t cab) : RMFT2(locateRouteStart(route)) {
   loco=cab;
+}
+
+RMFT2::RMFT2(int progCtr) {
+  progCounter=progCtr;
+  delayTime=0;
+  loco=0;
   speedo=0;
   forward=true;
   invert=false;
@@ -239,7 +243,7 @@ RMFT2::RMFT2(byte route, uint16_t cab) {
         loopTask->next=this;
   }
   
-  if (diag) DIAG(F("RMFT created for Route %d at prog %d, next=%x, loopTask=%x"),route,progCounter,next,loopTask);
+  if (diag) DIAG(F("RMFT(%d)"),progCounter);
 }
 
 
@@ -596,8 +600,7 @@ int RMFT2::getIntOperand(byte operand1) {
 }
 
 /* static */ void RMFT2::doSignal(byte id,bool red, bool amber, bool green) { 
-  int pcounter;
-  for (pcounter=0;; pcounter+=2){
+  for (int pcounter=0;; pcounter+=2){
      byte opcode=GETFLASH(RMFT2::RouteCode+pcounter);
      if (opcode==OPCODE_ENDEXRAIL) return;
      if (opcode!=OPCODE_SIGNAL) continue;
@@ -613,4 +616,14 @@ int RMFT2::getIntOperand(byte operand1) {
      return;
    }
   } 
- 
+ void RMFT2::turnoutEvent(int id, bool thrown) {
+    byte huntFor=thrown? OPCODE_ONTHROW : OPCODE_ONCLOSE;
+    for (int pcounter=0;; pcounter+=2){
+     byte opcode=GETFLASH(RMFT2::RouteCode+pcounter);
+     if (opcode==OPCODE_ENDEXRAIL) return;
+     if (opcode!=huntFor) continue;
+     if (id!=GETFLASH(RMFT2::RouteCode+pcounter+1)) continue;
+     new RMFT2(pcounter);  // new task starts at this instruction
+     return;
+   }
+  }
