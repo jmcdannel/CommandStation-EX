@@ -554,6 +554,8 @@ void RMFT2::loop2() {
        case OPCODE_PAD: // Just a padding for previous opcode needing >1 operad byte.
        case OPCODE_SIGNAL: // Signal definition ignore at run time
        case OPCODE_TURNOUT: // Turnout definition ignored at runtime
+       case OPCODE_ONCLOSE: // Turnout event catcers ignored here
+       case OPCODE_ONTHROW: // Turnout definition ignored at runtime
        break;
     
     default:
