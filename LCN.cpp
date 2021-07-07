@@ -49,7 +49,7 @@ void LCN::loop() {
     else if (ch == 't' || ch == 'T') { // Turnout opcodes
       if (Diag::LCN) DIAG(F("LCN IN %d%c"),id,(char)ch);
       Turnout * tt = Turnout::get(id);
-      if (!tt) Turnout::createLCN(id);
+      if (!tt) tt=Turnout::createLCN(id);
       tt->setActive(ch=='t');
       Turnout::turnoutlistHash++; // signals ED update of turnout data
       id = 0;
