@@ -17,6 +17,9 @@
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+// TODO: Consider making GPIOBase a template class to reduce RAM usage for 8-pin modules.
+// I have tried this but couldn't get it to compile.
+
 #include "IO_GPIOBase.h"
 
 // Constructor
@@ -91,6 +94,8 @@ void GPIOBase::_loop(unsigned long currentMicros) {
   } else
   // No interrupt pin.  Check if tick has elapsed.  If not, finish.
   if (currentMicros - _lastLoopEntry < _portTickTime) return;
+
+  // TODO: Could suppress reads if there are no pins configured as inputs!
 
   // Read input
   _lastLoopEntry = currentMicros;
