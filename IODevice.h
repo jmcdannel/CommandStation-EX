@@ -270,15 +270,14 @@ private:
 class DCCAccessoryDecoder: public IODevice {
 public:
   static void create(VPIN firstVpin, int nPins, int DCCAddress, int DCCSubaddress);
-  static void create(VPIN firstVpin, int nPins, int DCCLinearAddress);
 
 private:
   // Constructor
-  DCCAccessoryDecoder(VPIN firstVpin, int nPins, int DCCLinearAddress);
+  DCCAccessoryDecoder(VPIN firstVpin, int nPins, int DCCAddress, int DCCSubaddress);
   // Device-specific write function.
   void _write(VPIN vpin, int value);
   void _display();
-  int _dccLinearAddress;
+  int _packedAddress;
 };
 
 
