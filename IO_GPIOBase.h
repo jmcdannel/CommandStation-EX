@@ -47,6 +47,7 @@ protected:
   uint16_t _portOutputState;
   uint16_t _portMode;
   uint16_t _portPullup;
+  uint16_t _portInvert;  // Inversion mask for inputs
   // Interval between refreshes of each input port
   static const int _portTickTime = 4000;
   unsigned long _lastLoopEntry = 0;

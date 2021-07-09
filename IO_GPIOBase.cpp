@@ -44,6 +44,7 @@ GPIOBase::GPIOBase(FSH *deviceName, VPIN firstVpin, uint8_t nPins, uint8_t I2CAd
     _portMode = 0x0000;  // default to input mode
     _portPullup = 0xFFFF; // default to pullup enabled
     _portInputState = 0x0000; 
+    _portInvert = 0x0000;  // default to no invert
   }
   _deviceState = DEVSTATE_NORMAL;
   _lastLoopEntry = micros();
@@ -51,9 +52,12 @@ GPIOBase::GPIOBase(FSH *deviceName, VPIN firstVpin, uint8_t nPins, uint8_t I2CAd
 
 void GPIOBase::_begin() {}
 
+// Configuration parameters for inputs: 
+//  params[0]: enable pullup
+//  params[1]: invert input (optional)
 bool GPIOBase::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) {
   if (configType != CONFIGURE_INPUT) return false;
-  if (paramCount != 1) return false;
+  if (paramCount == 0 || paramCount > 2) return false;
   bool pullup = params[0];
   int pin = vpin - _firstVpin;
   #ifdef DIAG_IO
@@ -69,6 +73,14 @@ bool GPIOBase::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, 
   _writePullups();
   // Re-read port following change
   _readGpioPort();
+
+  if (paramCount == 2) {
+    bool invert = params[1];
+    if (invert) 
+      _portInvert |= mask;
+    else
+      _portInvert &= ~mask;
+  }
 
   return true;
 }
@@ -153,5 +165,5 @@ int GPIOBase::_read(VPIN vpin) {
     DIAG(F("%S I2C:x%x PortStates:%x"), _deviceName, _I2CAddress, _portInputState);
     #endif
   }
-  return (_portInputState & mask) ? 1 : 0;
+  return ((_portInputState ^ _portInvert) & mask) ? 1 : 0;
 }
