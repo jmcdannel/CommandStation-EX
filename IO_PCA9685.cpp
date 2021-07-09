@@ -37,14 +37,9 @@ static const uint32_t MAX_I2C_SPEED = 1000000L; // PCA9685 rated up to 1MHz I2C 
 // Predeclare helper function
 static void writeRegister(byte address, byte reg, byte value);
 
-// Create device driver.  This function assumes that one or more PCA9685s will be installed on 
-// successive I2C addresses with a contiguous range of VPINs.  For example, the first PCA9685 may
-// be at address 0x40 and allocated pins 100-115.  In this case, pins 116-131 would be on another
-// PCA9685 on address 0x41, pins 132-147 on address 0x42, and pins 148-163 on address 0x43.  
-//
+// Create device driver instance.
 void PCA9685::create(VPIN firstVpin, int nPins, uint8_t I2CAddress) {
-  PCA9685 *dev = new PCA9685(firstVpin, nPins, I2CAddress);
-  if (dev) addDevice(dev);
+  new PCA9685(firstVpin, nPins, I2CAddress);
 }
 
 // Configure a port on the PCA9685.
@@ -80,18 +75,10 @@ PCA9685::PCA9685(VPIN firstVpin, int nPins, uint8_t I2CAddress) {
   _firstVpin = firstVpin;
   _nPins = min(nPins, 16);
   _I2CAddress = I2CAddress;
-  for (int i=0; i<_nPins; i++) {
+  for (int i=0; i<_nPins; i++)
     _servoData[i] = NULL;
-    // struct ServoData *s = _servoData[i];
-    // // Assume default servo bounds of 1ms-2ms pulse length
-    // s->activePosition = 409;
-    // s->inactivePosition = 205;
-    // // Set default position to mid-range
-    // s->currentPosition = 307;
-    // s->profile = Instant;
-    // s->numSteps = 0;
-    // s->state = -1;  // Current state unknown.
-  }
+
+  addDevice(this);
 
   // Initialise structure used for setting pulse rate
   requestBlock.setWriteParams(_I2CAddress, outputBuffer, sizeof(outputBuffer));
@@ -100,7 +87,7 @@ PCA9685::PCA9685(VPIN firstVpin, int nPins, uint8_t I2CAddress) {
           // In reality, other devices including the Arduino will limit 
           // the clock speed to a lower rate.
 
-  // Initialise I/O module(s) here.
+  // Initialise I/O module here.
   if (I2CManager.exists(_I2CAddress)) {
     DIAG(F("PCA9685 I2C:%x configured Vpins:%d-%d"), _I2CAddress, _firstVpin, _firstVpin+_nPins-1);
     writeRegister(_I2CAddress, PCA9685_MODE1, MODE1_SLEEP | MODE1_AI);    
@@ -121,32 +108,36 @@ void PCA9685::_begin() {
 void PCA9685::_write(VPIN vpin, int value) {
   #ifdef DIAG_IO
   DIAG(F("PCA9685 Write Vpin:%d Value:%d"), vpin, value);
-  #else
-  (void)vpin;  // suppress compiler warning
   #endif
   int pin = vpin - _firstVpin;
   if (value) value = 1;
 
   struct ServoData *s = _servoData[pin];
-  if (!s) return;               // Pin not configured
-  if (s->state == value) return; // Nothing to do.
+  if (!s) {
+    // Pin not configured, just write default positions to servo controller
+    if (value) 
+      writeDevice(pin, 410);  // 2ms pulses
+    else 
+      writeDevice(pin, 205);  // 1ms pulses    
+  } else {
+    // Use configured parameters for advanced transitions
+    uint8_t profile = s->profile;
+    // If current position not known, go straight to selected position.
+    if (s->state == -1) profile = Instant;
 
-  uint8_t profile = s->profile;
-  // If current position not known, go straight to selected position.
-  if (s->state == -1) profile = Instant;
+    // Animated profile.  Initiate the appropriate action.
+    s->numSteps = profile==Fast ? 10 : 
+                  profile==Medium ? 20 : 
+                  profile==Slow ? 40 : 
+                  profile==Bounce ? sizeof(_bounceProfile) : 
+                  1;
+    s->state = value;
+    s->stepNumber = 0;
 
-  // Animated profile.  Initiate the appropriate action.
-  s->numSteps = profile==Fast ? 10 : 
-                profile==Medium ? 20 : 
-                profile==Slow ? 40 : 
-                profile==Bounce ? sizeof(_bounceProfile) : 
-                1;
-  s->state = value;
-  s->stepNumber = 0;
-
-  // Update new from/to positions to initiate or change animation.
-  s->fromPosition = s->currentPosition;
-  s->toPosition = s->state ? s->activePosition : s->inactivePosition;
+    // Update new from/to positions to initiate or change animation.
+    s->fromPosition = s->currentPosition;
+    s->toPosition = s->state ? s->activePosition : s->inactivePosition;
+  }
 }
 
 void PCA9685::_loop(unsigned long currentMicros) {
