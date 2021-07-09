@@ -73,15 +73,16 @@ void IODevice::loop() {
   static unsigned long maxElapsed = 0;
   static unsigned long lastOutputTime = 0;
   static unsigned long count = 0;
+  const unsigned long interval = (unsigned long)5 * 1000 * 1000; // 5 seconds in microsec
   unsigned long elapsed = currentMicros - lastMicros;
   // Ignore long loop counts while message is still outputting
   if (currentMicros - lastOutputTime > 3000UL) {
     if (elapsed > maxElapsed) maxElapsed = elapsed;
   }
   count++;
-  if (currentMicros - lastOutputTime > 5000000UL) {
+  if (currentMicros - lastOutputTime > interval) {
     if (lastOutputTime > 0) 
-      LCD(1,F("Loop=%lus,%lus max"), (unsigned long)5000000UL/count, maxElapsed);
+      LCD(1,F("Loop=%lus,%lus max"), interval/count, maxElapsed);
     maxElapsed = 0;
     count = 0;
     lastOutputTime = currentMicros;
