@@ -17,13 +17,9 @@
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-// TODO: Enable optional use of interrupt pin on MCP23008/23017 modules, 
-// chained from one module to another, into an Arduino digital input.
-// When the Arduino digital input is pulled DOWN, it indicates that the 
-// modules need to be scanned.  Once the interrupting module(s) has been
-// scanned, then the digital input will deactivate (pulled UP).
 
 #include <Arduino.h>
+#include "DIO2.h"
 #include "IODevice.h"
 #include "DIAG.h" 
 #include "FSH.h"
@@ -169,7 +165,7 @@ void IODevice::write(VPIN vpin, int value) {
 
 void IODevice::setGPIOInterruptPin(int16_t pinNumber) {
   if (pinNumber >= 0)
-    pinMode(pinNumber, INPUT_PULLUP);
+    pinMode2(pinNumber, INPUT_PULLUP);
   _gpioInterruptPin = pinNumber;
 }
 
@@ -268,16 +264,18 @@ bool IODevice::configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, i
     return false;
 }
 void IODevice::write(VPIN vpin, int value) {
-  pinMode(vpin, OUTPUT);
-  digitalWrite(vpin, value);
+  GPIO_pin_t gpioPin = Arduino_to_GPIO_pin(vpin);
+  pinMode2f(gpioPin, OUTPUT);
+  digitalWrite2f(gpioPin, value);
 }
 bool IODevice::hasCallback(VPIN vpin) { 
   (void)vpin;  // Avoid compiler warnings
   return false; 
 }
 bool IODevice::read(VPIN vpin) { 
-  pinMode(vpin, INPUT_PULLUP);
-  return digitalRead(vpin);
+  GPIO_pin_t gpioPin = Arduino_to_GPIO_pin(vpin);
+  pinMode2f(gpioPin, INPUT_PULLUP);
+  return digitalRead2f(gpioPin);
 }
 void IODevice::loop() {}
 void IODevice::DumpAll() {
@@ -322,10 +320,10 @@ bool ArduinoPins::_configure(VPIN id, ConfigTypeEnum configType, int paramCount,
   uint8_t index = (pin-_firstVpin) / 8;
   if (pullup) {
     _pinPullups[index] |= mask;
-    pinMode(pin, INPUT_PULLUP);
+    pinMode2(pin, INPUT_PULLUP);
   } else {
     _pinPullups[index] &= ~mask;
-    pinMode(pin, INPUT);
+    pinMode2(pin, INPUT);
   }
   return true;
 }
@@ -336,8 +334,9 @@ void ArduinoPins::_write(VPIN id, int value) {
   #ifdef DIAG_IO
   DIAG(F("Arduino Write Pin:%d Val:%d"), pin, value);
   #endif
-  digitalWrite(pin, value);
-  pinMode(pin, OUTPUT);
+  GPIO_pin_t gpioPin = Arduino_to_GPIO_pin(pin);
+  digitalWrite2f(gpioPin, value);
+  pinMode2f(gpioPin, OUTPUT);
 }
 
 // Device-specific read function.
@@ -345,11 +344,12 @@ int ArduinoPins::_read(VPIN id) {
   int pin = id;
   uint8_t mask = 1 << ((pin-_firstVpin) % 8);
   uint8_t index = (pin-_firstVpin) / 8;
+  GPIO_pin_t gpioPin = Arduino_to_GPIO_pin(pin);
   if (_pinPullups[index] & mask) 
-    pinMode(pin, INPUT_PULLUP);
+    pinMode2f(gpioPin, INPUT_PULLUP);
   else
-    pinMode(pin, INPUT);
-  int value = digitalRead(pin);
+    pinMode2(gpioPin, INPUT);
+  int value = digitalRead2f(gpioPin);
   #ifdef DIAG_IO
   //DIAG(F("Arduino Read Pin:%d Value:%d"), pin, value);
   #endif
