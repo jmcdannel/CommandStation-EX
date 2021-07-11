@@ -21,6 +21,7 @@
 
 // The entire automation script is contained within a byte arrayRMFT2::RouteCode[]
 // made up of opcode and parameter pairs.
+// ech opcode is a 1 byte operation plus 2 byte operand. 
 // The array is normally built using the macros below as this makes it easier 
 // to manage the cases where:
 // - padding must be applied to ensure the correct alignment of the next instruction
@@ -28,60 +29,62 @@
 // - multiple parameters aligned correctly
 // - a single macro requires multiple operations 
 
-#define I_SPLIT(val) (val)>>7,OPCODE_PAD,(val)&0x7F
+#define V(val) (val)&0x7F,(val)>>7
+#define NOP 0,0
+#define B(val) val,0
 
 #define EXRAIL const  FLASH  byte RMFT2::RouteCode[] = {
-#define AUTOMATION(id)  OPCODE_AUTOMATION, id, 
-#define ROUTE(id)  OPCODE_ROUTE, id, 
-#define SEQUENCE(id)  OPCODE_SEQUENCE, id, 
-#define ENDTASK OPCODE_ENDTASK,0,
-#define ENDEXRAIL OPCODE_ENDTASK,0,OPCODE_ENDEXRAIL,0 };
+#define AUTOMATION(id)  OPCODE_AUTOMATION, V(id), 
+#define ROUTE(id)  OPCODE_ROUTE, V(id), 
+#define SEQUENCE(id)  OPCODE_SEQUENCE, V(id), 
+#define ENDTASK OPCODE_ENDTASK,NOP,
+#define ENDEXRAIL OPCODE_ENDTASK,NOP,OPCODE_ENDEXRAIL,NOP };
  
-#define AFTER(sensor_id) OPCODE_AT,sensor_id,OPCODE_AFTER,sensor_id,
-#define AMBER(signal_id) OPCODE_AMBER,signal_id,
-#define AT(sensor_id) OPCODE_AT,sensor_id,
-#define CALL(route) OPCODE_CALL,route,
-#define DELAY(mindelay) OPCODE_DELAY,I_SPLIT(mindelay),
-#define DELAYMINS(mindelay) OPCODE_DELAYMINS,mindelay,
-#define DELAYRANDOM(mindelay,maxdelay) OPCODE_DELAY,I_SPLIT(mindelay),OPCODE_RANDWAIT,I_SPLIT(maxdelay-mindelay),
-#define ENDIF  OPCODE_ENDIF,0,
-#define FOFF(func) OPCODE_FOFF,func,
-#define FOLLOW(route) OPCODE_FOLLOW,route,
-#define FON(func) OPCODE_FON,func,
-#define FREE(blockid) OPCODE_FREE,blockid,
-#define FWD(speed) OPCODE_FWD,speed,
-#define GREEN(signal_id) OPCODE_GREEN,signal_id,
-#define IF(sensor_id) OPCODE_IF,sensor_id,
-#define IFNOT(sensor_id) OPCODE_IFNOT,sensor_id,
-#define IFRANDOM(percent) OPCODE_IFRANDOM,percent,
-#define INVERT_DIRECTION OPCODE_INVERT_DIRECTION,0,
-#define JOIN OPCODE_JOIN,0,
-#define LATCH(sensor_id) OPCODE_LATCH,sensor_id,
-#define ONCLOSE(turnout_id) OPCODE_ONCLOSE,turnout_id,
-#define ONTHROW(turnout_id) OPCODE_ONTHROW,turnout_id,
-#define PAUSE OPCODE_PAUSE,0,
-#define POM(cv,value) OPCODE_POM,I_SPLIT(cv),OPCODE_PAD,value,
-#define READ_LOCO OPCODE_READ_LOCO1,0,OPCODE_READ_LOCO2,0,
-#define RED(signal_id) OPCODE_RED,signal_id,
-#define RESERVE(blockid) OPCODE_RESERVE,blockid,
-#define RESET(sensor_id) OPCODE_RESET,sensor_id,
-#define RESUME OPCODE_RESUME,0,
-#define RETURN OPCODE_RETURN,0,
-#define REV(speed) OPCODE_REV,speed,
-#define START(route) OPCODE_START,route,
-#define SERVO(id,position,profile) OPCODE_SERVO,id,OPCODE_PAD,I_SPLIT(position),OPCODE_PAD,profile,
-#define SETLOCO(loco) OPCODE_SETLOCO,I_SPLIT(loco),
-#define SET(sensor_id) OPCODE_SET,sensor_id,
-#define SPEED(speed) OPCODE_SPEED,speed,
-#define STOP OPCODE_SPEED,0, 
+#define AFTER(sensor_id) OPCODE_AT,V(sensor_id),OPCODE_AFTER,V(sensor_id),
+#define AMBER(signal_id) OPCODE_AMBER,V(signal_id),
+#define AT(sensor_id) OPCODE_AT,V(sensor_id),
+#define CALL(route) OPCODE_CALL,V(route),
+#define DELAY(mindelay) OPCODE_DELAY,V(mindelay),
+#define DELAYMINS(mindelay) OPCODE_DELAYMINS,V(mindelay),
+#define DELAYRANDOM(mindelay,maxdelay) OPCODE_DELAY,V(mindelay),OPCODE_RANDWAIT,V(maxdelay-mindelay),
+#define ENDIF  OPCODE_ENDIF,NOP,
+#define FOFF(func) OPCODE_FOFF,V(func),
+#define FOLLOW(route) OPCODE_FOLLOW,V(route),
+#define FON(func) OPCODE_FON,V(func),
+#define FREE(blockid) OPCODE_FREE,V(blockid),
+#define FWD(speed) OPCODE_FWD,V(speed),
+#define GREEN(signal_id) OPCODE_GREEN,V(signal_id),
+#define IF(sensor_id) OPCODE_IF,V(sensor_id),
+#define IFNOT(sensor_id) OPCODE_IFNOT,V(sensor_id),
+#define IFRANDOM(percent) OPCODE_IFRANDOM,V(percent),
+#define INVERT_DIRECTION OPCODE_INVERT_DIRECTION,NOP,
+#define JOIN OPCODE_JOIN,NOP,
+#define LATCH(sensor_id) OPCODE_LATCH,V(sensor_id),
+#define ONCLOSE(turnout_id) OPCODE_ONCLOSE,V(turnout_id),
+#define ONTHROW(turnout_id) OPCODE_ONTHROW,V(turnout_id),
+#define PAUSE OPCODE_PAUSE,NOP,
+#define POM(cv,value) OPCODE_POM,V(cv),OPCODE_PAD,V(value),
+#define READ_LOCO OPCODE_READ_LOCO1,NOP,OPCODE_READ_LOCO2,NOP,
+#define RED(signal_id) OPCODE_RED,V(signal_id),
+#define RESERVE(blockid) OPCODE_RESERVE,V(blockid),
+#define RESET(sensor_id) OPCODE_RESET,V(sensor_id),
+#define RESUME OPCODE_RESUME,NOP,
+#define RETURN OPCODE_RETURN,NOP,
+#define REV(speed) OPCODE_REV,V(speed),
+#define START(route) OPCODE_START,V(route),
+#define SERVO(id,position,profile) OPCODE_SERVO,V(id),OPCODE_PAD,V(position),OPCODE_PAD,V(profile),
+#define SETLOCO(loco) OPCODE_SETLOCO,V(loco),
+#define SET(sensor_id) OPCODE_SET,V(sensor_id),
+#define SPEED(speed) OPCODE_SPEED,V(speed),
+#define STOP OPCODE_SPEED,V(0), 
 #undef SIGNAL
-#define SIGNAL(redpin,amberpin,greenpin) OPCODE_SIGNAL,redpin,OPCODE_PAD,amberpin,OPCODE_PAD,greenpin, 
-#define TURNOUT(id,addr,subaddr) OPCODE_TURNOUT,id,OPCODE_PAD,addr,OPCODE_PAD,subaddr,
-#define UNJOIN OPCODE_UNJOIN,0,
-#define ESTOP OPCODE_SPEED,1, 
-#define THROW(id)  OPCODE_THROW,id,
-#define CLOSE(id)  OPCODE_CLOSE,id,
-#define UNLATCH(sensor_id) OPCODE_UNLATCH,sensor_id,
+#define SIGNAL(redpin,amberpin,greenpin) OPCODE_SIGNAL,V(redpin),OPCODE_PAD,V(amberpin),OPCODE_PAD,V(greenpin), 
+#define TURNOUT(id,addr,subaddr) OPCODE_TURNOUT,V(id),OPCODE_PAD,V(addr),OPCODE_PAD,V(subaddr),
+#define UNJOIN OPCODE_UNJOIN,NOP,
+#define ESTOP OPCODE_SPEED,V(1), 
+#define THROW(id)  OPCODE_THROW,V(id),
+#define CLOSE(id)  OPCODE_CLOSE,V(id),
+#define UNLATCH(sensor_id) OPCODE_UNLATCH,V(sensor_id),
    
 // The following are the operation codes (or instructions) for a kind of virtual machine.
 // Each instruction is normally 2 bytes long with an operation code followed by a parameter.

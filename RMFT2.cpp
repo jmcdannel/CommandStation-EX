@@ -26,7 +26,6 @@
 #include "Turnouts.h"
 #include "Outputs.h"
 
-
 // Command parsing keywords
 const int16_t HASH_KEYWORD_EXRAIL=15435;    
 const int16_t HASH_KEYWORD_ON = 2657;
@@ -51,25 +50,30 @@ RMFT2 * RMFT2::pausingTask=NULL; // Task causing a PAUSE.
  // and all others will have their locos stopped, then resumed after the pausing task resumes.
 byte RMFT2::flags[MAX_FLAGS];
 
+#define GET_OPCODE GETFLASH(RMFT2::RouteCode+progCounter)
+#define GET_OPERAND(n) GETFLASHW(RMFT2::RouteCode+progCounter+1+(n*3))
+#define SKIPOP progCounter+=3
+
 /* static */ void RMFT2::begin() { 
   DCCEXParser::setRMFTFilter(RMFT2::ComandFilter);
   for (int f=0;f<MAX_FLAGS;f++) flags[f]=0;
-  int pcounter;
+  int progCounter;
   // first pass startup, define any turnouts or servos and count size.
-  for (pcounter=0;; pcounter+=2){
-     byte opcode=GETFLASH(RMFT2::RouteCode+pcounter);
+  for (progCounter=0;; SKIPOP){
+     byte opcode=GET_OPCODE;
      if (opcode==OPCODE_ENDEXRAIL) break;
+
      if (opcode==OPCODE_TURNOUT) {
-      byte id=GETFLASH(RMFT2::RouteCode+pcounter+1);
-      pcounter+=2;
-      byte addr=GETFLASH(RMFT2::RouteCode+pcounter+1);
-      pcounter+=2;
-      byte subAddr=GETFLASH(RMFT2::RouteCode+pcounter+1);
+      VPIN id=GET_OPERAND(0);
+      int addr=GET_OPERAND(1);
+      byte subAddr=GET_OPERAND(2);
       Turnout::createDCC(id,addr,subAddr);
+      continue;
      }
+ 
   } 
-  pcounter+=2; // include ENDROUTES opcode
-  DIAG(F("EXRAIL %db, MAX_FLAGS=%d"), pcounter,MAX_FLAGS);
+  SKIPOP; // include ENDROUTES opcode
+  DIAG(F("EXRAIL %db, MAX_FLAGS=%d"), progCounter,MAX_FLAGS);
   new RMFT2(0); // add the startup route
 }
 
@@ -200,11 +204,11 @@ bool RMFT2::parseSlash(Print * stream, byte & paramCount, int16_t p[]) {
 // Routes are given "Set" buttons and do not cause the loco to be handed over. 
 void RMFT2::emitWithrottleRouteList(Print* stream) {
   bool first=true;
-  for (int pcounter=0;;pcounter+=2) {
-    byte opcode=GETFLASH(RMFT2::RouteCode+pcounter);
+  for (int progCounter=0;;SKIPOP) {
+    byte opcode=GET_OPCODE;
     if (opcode==OPCODE_ENDEXRAIL) break;
     if (opcode==OPCODE_ROUTE || opcode==OPCODE_AUTOMATION) {
-      byte  route=GETFLASH(RMFT2::RouteCode+pcounter+1);
+      int  route=GET_OPERAND(0);
       if (first) {
         first=false;
         StringFormatter::send(stream,F("PRT]\\[Routes}|{Route]\\[Set}|{2]\\[Handoff}|{4\nPRL"));
@@ -217,7 +221,7 @@ void RMFT2::emitWithrottleRouteList(Print* stream) {
 }
 
 // An instance of this object guides a loco through a journey, or simply animates something. 
-RMFT2::RMFT2(byte route, uint16_t cab) : RMFT2(locateRouteStart(route)) {
+RMFT2::RMFT2(int route, uint16_t cab) : RMFT2(locateRouteStart(route)) {
   loco=cab;
 }
 
@@ -252,13 +256,13 @@ RMFT2::~RMFT2() {
 }
 
 
-int RMFT2::locateRouteStart(short _route) {
+int RMFT2::locateRouteStart(int _route) {
   if (_route==0) return 0; // Route 0 is always start of ROUTES for default startup 
-  for (int pcounter=0;;pcounter+=2) {
-    byte opcode=GETFLASH(RMFT2::RouteCode+pcounter);
+  for (int progCounter=0;;SKIPOP) {
+    byte opcode=GET_OPCODE;
     if (opcode==OPCODE_ENDEXRAIL) return -1;
     if ((opcode==OPCODE_ROUTE || opcode==OPCODE_AUTOMATION || opcode==OPCODE_SEQUENCE) 
-       &&  _route==GETFLASH(RMFT2::RouteCode+pcounter+1)) return pcounter;
+       &&  _route==(int)GET_OPERAND(0)) return progCounter;
   }
   return -1;
 }
@@ -272,7 +276,7 @@ void RMFT2::driveLoco(byte speed) {
      // TODO... if broadcast speed 0 then pause all other tasks. 
 }
 
-bool RMFT2::readSensor(short id) {
+bool RMFT2::readSensor(VPIN id) {
   if (getFlag(id,SENSOR_FLAG)) return true; // latched on
   short s= IODevice::read(id);
   if (s==1 && diag) DIAG(F("EXRAIL Sensor %d hit"),id);
@@ -283,8 +287,8 @@ bool RMFT2::skipIfBlock() {
   // returns false if killed
   short nest = 1;
   while (nest > 0) {
-    progCounter += 2;
-    byte opcode =  GETFLASH(RMFT2::RouteCode+progCounter);;
+    SKIPOP;
+    byte opcode =  GET_OPCODE;
     switch(opcode) {
       case OPCODE_ENDEXRAIL: 
            kill(F("missing ENDIF"), nest);
@@ -324,8 +328,8 @@ void RMFT2::loop() {
 void RMFT2::loop2() {
    if (delayTime!=0 && millis()-delayStart < delayTime) return;
      
-  byte opcode = GETFLASH(RMFT2::RouteCode+progCounter);
-  byte operand =  GETFLASH(RMFT2::RouteCode+progCounter+1);
+  byte opcode = GET_OPCODE;
+  byte operand =  GET_OPERAND(0);
    
   // Attention: Returning from this switch leaves the program counter unchanged.
   //            This is used for unfinished waits for timers or sensors.
@@ -414,11 +418,8 @@ void RMFT2::loop2() {
          break;
 
     case OPCODE_POM:
-        if (loco==0) break;
-        {
-          int cv=getIntOperand(operand);
-          byte bValue=GETFLASH(RMFT2::RouteCode+progCounter+3);
-          DCC::writeCVByteMain(loco, cv, bValue);
+        if (loco!=0) {
+          DCC::writeCVByteMain(loco, operand, GET_OPERAND(1));
         }        
         break;
 
@@ -444,7 +445,7 @@ void RMFT2::loop2() {
       break;
     
     case OPCODE_DELAY:
-      delayMe(getIntOperand(operand)*100);
+      delayMe(operand*100);
       break;
    
     case OPCODE_DELAYMINS:
@@ -452,7 +453,7 @@ void RMFT2::loop2() {
       break;
     
     case OPCODE_RANDWAIT:
-      delayMe((long)random(getIntOperand(operand)*10));
+      delayMe((long)random(operand*100));
       break;
     
     case OPCODE_RED:
@@ -532,14 +533,14 @@ void RMFT2::loop2() {
             // but cheat by swapping prog counters with new task  
             new RMFT2(operand);
             int swap=loopTask->progCounter;
-            loopTask->progCounter=progCounter+2;
+            loopTask->progCounter=progCounter+3;
             progCounter=swap;
            }
            break;
        
        case OPCODE_SETLOCO:
            {
-             loco=getIntOperand(operand); 
+             loco=operand; 
              speedo=0;
              forward=true;
              invert=false;
@@ -548,14 +549,12 @@ void RMFT2::loop2() {
 
           
        case OPCODE_SERVO:
-        { // OPCODE_SERVO,id,OPCODE_PAD,I_SPLIT(position),OPCODE_PAD,profile,
+        { // OPCODE_SERVO,V(id),OPCODE_PAD,V(position),OPCODE_PAD,V(profile),
           const byte paramCount=4;
           int params[paramCount]; // = {activePos, inactivePos, profile, initialState}
-          progCounter+=2; // move on to second param which is split
-          byte pos1 =  GETFLASH(RMFT2::RouteCode+progCounter+1);
-          params[0]=getIntOperand(pos1);
+          params[0]=GET_OPERAND(1);
           params[1]=params[0];
-          params[2]=GETFLASH(RMFT2::RouteCode+progCounter+1);
+          params[2]=GET_OPERAND(2);
           params[3]=0;          
           IODevice::configure(operand, IODevice::CONFIGURE_SERVO, paramCount, params);
           IODevice::write(operand, 1);  // Reposition Servo
@@ -579,7 +578,7 @@ void RMFT2::loop2() {
       kill(F("INVOP"),operand);
     }
     // Falling out of the switch means move on to the next opcode
-    progCounter+=2;
+    SKIPOP;
 }
 
 void RMFT2::delayMe(long delay) {
@@ -587,15 +586,15 @@ void RMFT2::delayMe(long delay) {
      delayStart=millis();
 }
 
-void RMFT2::setFlag(byte id,byte onMask, byte offMask) {  
-   if (FLAGOVERFLOW(id)) return; // Outside UNO range limit
+void RMFT2::setFlag(VPIN id,byte onMask, byte offMask) {  
+   if (FLAGOVERFLOW(id)) return; // Outside range limit
    byte f=flags[id];
    f &= ~offMask;
    f |= onMask;
 }
 
-byte RMFT2::getFlag(byte id,byte mask) {
-   if (FLAGOVERFLOW(id)) return 0; // Outside UNO range limit
+byte RMFT2::getFlag(VPIN id,byte mask) {
+   if (FLAGOVERFLOW(id)) return 0; // Outside range limit
    return flags[id]&mask;   
 }
 
@@ -605,38 +604,31 @@ void RMFT2::kill(const FSH * reason, int operand) {
      delete this;
 }
 
-int RMFT2::getIntOperand(byte operand1) {
-   // second part of long operands follow 3 bytes after the current progCounter
-   int operand2 =  GETFLASH(RMFT2::RouteCode+progCounter+3);
-   progCounter+=2; // Skip the OPCODE_PAD and its operand. 
-   return (operand1<<7) | operand2;
-}
-
-/* static */ void RMFT2::doSignal(byte id,bool red, bool amber, bool green) { 
-  for (int pcounter=0;; pcounter+=2){
-     byte opcode=GETFLASH(RMFT2::RouteCode+pcounter);
+/* static */ void RMFT2::doSignal(VPIN id,bool red, bool amber, bool green) { 
+  // CAUTION: hides class member progCounter
+  for (int progCounter=0;; SKIPOP){
+     byte opcode=GET_OPCODE;
      if (opcode==OPCODE_ENDEXRAIL) return;
      if (opcode!=OPCODE_SIGNAL) continue;
-     byte redpin=GETFLASH(RMFT2::RouteCode+pcounter+1);
+     byte redpin=GET_OPERAND(1);
      if (redpin!=id)continue;
-     pcounter+=2;
-     byte amberpin=GETFLASH(RMFT2::RouteCode+pcounter+1);
-     pcounter+=2;
-     byte greenpin=GETFLASH(RMFT2::RouteCode+pcounter+1);
+     byte amberpin=GET_OPERAND(2);
+     byte greenpin=GET_OPERAND(3);
      IODevice::write(redpin,red);
      if (amberpin) IODevice::write(amberpin,amber);
      if (greenpin) IODevice::write(amberpin,green);
      return;
    }
   } 
- void RMFT2::turnoutEvent(int id, bool thrown) {
+ void RMFT2::turnoutEvent(VPIN id, bool thrown) {
     byte huntFor=thrown? OPCODE_ONTHROW : OPCODE_ONCLOSE;
-    for (int pcounter=0;; pcounter+=2){
-     byte opcode=GETFLASH(RMFT2::RouteCode+pcounter);
+    // caution hides class progCounter;
+    for (int progCounter=0;; SKIPOP){
+     byte opcode=GET_OPCODE;
      if (opcode==OPCODE_ENDEXRAIL) return;
      if (opcode!=huntFor) continue;
-     if (id!=GETFLASH(RMFT2::RouteCode+pcounter+1)) continue;
-     new RMFT2(pcounter);  // new task starts at this instruction
+     if (id!=GET_OPERAND(0)) continue;
+     new RMFT2(progCounter);  // new task starts at this instruction
      return;
    }
   }
