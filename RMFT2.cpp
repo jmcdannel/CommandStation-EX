@@ -417,7 +417,16 @@ void RMFT2::loop2() {
          DCC::setThrottle(0,1,true);  // pause all locos on the track
          pausingTask=this;
          break;
- 
+
+    case OPCODE_POM:
+        if (loco==0) break;
+        {
+          int cv=getIntOperand(operand);
+          byte bValue=GETFLASH(RMFT2::RouteCode+progCounter+3);
+          DCC::writeCVByteMain(loco, cv, bValue);
+        }        
+        break;
+
     case OPCODE_RESUME:
          pausingTask=NULL;
          driveLoco(speedo);
