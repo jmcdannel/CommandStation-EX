@@ -116,9 +116,9 @@ void PCA9685::_write(VPIN vpin, int value) {
   if (!s) {
     // Pin not configured, just write default positions to servo controller
     if (value) 
-      writeDevice(pin, 410);  // 2ms pulses
+      writeDevice(pin, _defaultActivePosition);
     else 
-      writeDevice(pin, 205);  // 1ms pulses    
+      writeDevice(pin, _defaultInactivePosition);
   } else {
     // Use configured parameters for advanced transitions
     uint8_t profile = s->profile;
@@ -154,8 +154,8 @@ void PCA9685::_writeAnalogue(VPIN vpin, int value, int profile) {
   if (!s) {
     // Servo pin not configured, so configure now.
     s = _servoData[pin] = (struct ServoData *) calloc(sizeof(struct ServoData), 1);
-    s->activePosition = 410;  // Default to 2ms pulse
-    s->inactivePosition = 205; // and 1ms pulse
+    s->activePosition = _defaultActivePosition;
+    s->inactivePosition = _defaultInactivePosition;
     s->currentPosition = value; // Don't know where we're moving from.
   }
   s->profile = profile;
