@@ -70,7 +70,20 @@ byte RMFT2::flags[MAX_FLAGS];
       Turnout::createDCC(id,addr,subAddr);
       continue;
      }
- 
+
+     if (opcode==OPCODE_SERVOTURNOUT) {
+      VPIN id=GET_OPERAND(0);
+      int activeAngle=GET_OPERAND(1);
+      int inactiveAngle=GET_OPERAND(2);
+      Turnout::createServo(id,id,activeAngle,inactiveAngle);
+      continue;
+     }
+
+     if (opcode==OPCODE_PINTURNOUT) {
+      VPIN id=GET_OPERAND(0);
+      Turnout::createVpin(id,id);
+      continue;
+     }
   } 
   SKIPOP; // include ENDROUTES opcode
   DIAG(F("EXRAIL %db, MAX_FLAGS=%d"), progCounter,MAX_FLAGS);
@@ -570,6 +583,8 @@ void RMFT2::loop2() {
        case OPCODE_PAD: // Just a padding for previous opcode needing >1 operad byte.
        case OPCODE_SIGNAL: // Signal definition ignore at run time
        case OPCODE_TURNOUT: // Turnout definition ignored at runtime
+       case OPCODE_SERVOTURNOUT: // Turnout definition ignored at runtime
+       case OPCODE_PINTURNOUT: // Turnout definition ignored at runtime
        case OPCODE_ONCLOSE: // Turnout event catcers ignored here
        case OPCODE_ONTHROW: // Turnout definition ignored at runtime
        break;
