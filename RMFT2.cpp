@@ -28,16 +28,15 @@
 
 
 // Command parsing keywords
-const int16_t HASH_KEYWORD_RMFT=17997;    
+const int16_t HASH_KEYWORD_EXRAIL=15435;    
 const int16_t HASH_KEYWORD_ON = 2657;
-const int16_t HASH_KEYWORD_SCHEDULE=-9179;
+const int16_t HASH_KEYWORD_START=23232;
 const int16_t HASH_KEYWORD_RESERVE=11392;
 const int16_t HASH_KEYWORD_FREE=-23052;
 const int16_t HASH_KEYWORD_LATCH=1618;  
 const int16_t HASH_KEYWORD_UNLATCH=1353;
 const int16_t HASH_KEYWORD_PAUSE=-4142;
 const int16_t HASH_KEYWORD_RESUME=27609;
-const int16_t HASH_KEYWORD_STATUS=-25932;
 
 // One instance of RMFT clas is used for each "thread" in the automation.
 // Each thread manages a loco on a journey through the layout, and/or may manage a scenery automation.
@@ -45,7 +44,7 @@ const int16_t HASH_KEYWORD_STATUS=-25932;
 
 // Statics 
 int16_t RMFT2::progtrackLocoId;  // used for callback when detecting a loco on prograck
-bool RMFT2::diag=false;      // <D RMFT ON>  
+bool RMFT2::diag=false;      // <D EXRAIL ON>  
 RMFT2 * RMFT2::loopTask=NULL; // loopTask contains the address of ONE of the tasks in a ring.
 RMFT2 * RMFT2::pausingTask=NULL; // Task causing a PAUSE. 
  // when pausingTask is set, that is the ONLY task that gets any service,
@@ -70,7 +69,7 @@ byte RMFT2::flags[MAX_FLAGS];
      }
   } 
   pcounter+=2; // include ENDROUTES opcode
-  DIAG(F("RMFT myAutomation=%db, MAX_FLAGS=%d"), pcounter,MAX_FLAGS);
+  DIAG(F("EXRAIL %db, MAX_FLAGS=%d"), pcounter,MAX_FLAGS);
   new RMFT2(0); // add the startup route
 }
 
@@ -83,7 +82,7 @@ void RMFT2::ComandFilter(Print * stream, byte & opcode, byte & paramCount, int16
     switch(opcode) {
         
      case 'D':
-        if (p[0]==HASH_KEYWORD_RMFT) { // <D RMFT ON/OFF>
+        if (p[0]==HASH_KEYWORD_EXRAIL) { // <D EXRAIL ON/OFF>
            diag = paramCount==2 && (p[1]==HASH_KEYWORD_ON || p[1]==1);
            opcode=0;
         }
@@ -93,7 +92,7 @@ void RMFT2::ComandFilter(Print * stream, byte & opcode, byte & paramCount, int16
           // TODO - Monitor throttle commands and reject any that are in current automation
           break;
           
-     case '/':  // New RMFT command
+     case '/':  // New EXRAIL command
           reject=!parseSlash(stream,paramCount,p);
           opcode=0;
           break;
@@ -108,7 +107,32 @@ void RMFT2::ComandFilter(Print * stream, byte & opcode, byte & paramCount, int16
 }
      
 bool RMFT2::parseSlash(Print * stream, byte & paramCount, int16_t p[]) {
-          
+
+          if (paramCount==0) { // STATUS
+                 StringFormatter::send(stream, F("<* EXRAIL STATUS"));
+                 RMFT2 * task=loopTask;
+                 while(task) {
+                   StringFormatter::send(stream,F("\nPC=%d,DT=%d,LOCO=%d%c,SPEED=%d%c"),
+                         task->progCounter,task->delayTime,task->loco,
+                         task->invert?'I':' ',
+                         task->speedo, 
+                         task->forward?'F':'R'
+                         );
+                   task=task->next;      
+                   if (task==loopTask) break;      
+                 }
+                 // Now stream the flags 
+                 for (int id=0;id<MAX_FLAGS; id++) {
+                   byte flag=flags[id];
+                   if (flag) {
+                     StringFormatter::send(stream,F("\nflags[%d} "),id);
+                     if (flag & SECTION_FLAG) StringFormatter::send(stream,F(" RESERVED"));
+                     if (flag & SENSOR_FLAG) StringFormatter::send(stream,F(" SET"));
+                     }                 
+                 }
+                 StringFormatter::send(stream,F(" *>\n"));
+                 return true;
+            }
           switch (p[0]) {
             case HASH_KEYWORD_PAUSE: // </ PAUSE>
                  if (paramCount!=1) return false;
@@ -129,35 +153,8 @@ bool RMFT2::parseSlash(Print * stream, byte & paramCount, int16_t p[]) {
                  }        
                  return true;
                  
-            case HASH_KEYWORD_STATUS: // </STATUS>
-                 if (paramCount!=1) return false;
-                 StringFormatter::send(stream, F("<* RMFT STATUS"));
-                 {
-                  RMFT2 * task=loopTask;
-                  while(task) {
-                      StringFormatter::send(stream,F("\nPC=%d,DT=%d,LOCO=%d%c,SPEED=%d%c"),
-                            task->progCounter,task->delayTime,task->loco,
-                            task->invert?'I':' ',
-                            task->speedo, 
-                            task->forward?'F':'R'
-                            );
-                      task=task->next;      
-                      if (task==loopTask) break;      
-                    }                            
-                 }
-                 // Now stream the flags 
-                 for (int id=0;id<MAX_FLAGS; id++) {
-                   byte flag=flags[id];
-                   if (flag) {
-                     StringFormatter::send(stream,F("\nflags[%d} "),id);
-                     if (flag & SECTION_FLAG) StringFormatter::send(stream,F(" RESERVED"));
-                     if (flag & SENSOR_FLAG) StringFormatter::send(stream,F(" SET"));
-                     }                 
-                 }
-                 StringFormatter::send(stream,F(" *>\n"));
-                 return true;
-                 
-            case HASH_KEYWORD_SCHEDULE: // </ SCHEDULE [cab] route >
+                      
+            case HASH_KEYWORD_START: // </ START [cab] route >
                  if (paramCount<2 || paramCount>3) return false;
                  {
                   byte route=(paramCount==2) ? p[1] : p[2];
@@ -242,8 +239,6 @@ RMFT2::RMFT2(int progCtr) {
         next=loopTask->next;
         loopTask->next=this;
   }
-  
-  if (diag) DIAG(F("RMFT(%d)"),progCounter);
 }
 
 
@@ -271,7 +266,7 @@ int RMFT2::locateRouteStart(short _route) {
 
 void RMFT2::driveLoco(byte speed) {
      if (loco<0) return;  // Caution, allows broadcast! 
-     if (diag) DIAG(F("RMFT drive %d %d %d"),loco,speed,forward^invert);
+     if (diag) DIAG(F("EXRAIL drive %d %d %d"),loco,speed,forward^invert);
      DCC::setThrottle(loco,speed, forward^invert);
      speedo=speed;
      // TODO... if broadcast speed 0 then pause all other tasks. 
@@ -280,7 +275,7 @@ void RMFT2::driveLoco(byte speed) {
 bool RMFT2::readSensor(short id) {
   if (getFlag(id,SENSOR_FLAG)) return true; // latched on
   short s= IODevice::read(id);
-  if (s==1 && diag) DIAG(F("RMFT Sensor %d hit"),id);
+  if (s==1 && diag) DIAG(F("EXRAIL Sensor %d hit"),id);
   return s==1;
 }
 
@@ -531,7 +526,7 @@ void RMFT2::loop2() {
        invert=false;
        break;
        
-       case OPCODE_SCHEDULE:
+       case OPCODE_START:
            {
             // Create new task and transfer loco.....
             // but cheat by swapping prog counters with new task  
@@ -548,20 +543,13 @@ void RMFT2::loop2() {
              speedo=0;
              forward=true;
              invert=false;
-             if (diag) DIAG(F("RMFT SETLOCO %d"),loco);
             }
        break;
-       
+          
        case OPCODE_ROUTE:
-          if (diag) DIAG(F("RMFT ROUTE(%d)"),operand);
-          break;
-
        case OPCODE_AUTOMATION:
-          if (diag) DIAG(F("RMFT AUTOMATION(%d)"),operand);
-          break;
-
        case OPCODE_SEQUENCE:
-          if (diag) DIAG(F("RMFT SEQUENCE(%d)"),operand);
+          DIAG(F("EXRAIL begin(%d)"),operand);
           break;
 
        case OPCODE_PAD: // Just a padding for previous opcode needing >1 operad byte.
@@ -572,7 +560,7 @@ void RMFT2::loop2() {
        break;
     
     default:
-      DIAG(F("RMFT Opcode %d not supported at offset %d"),opcode,progCounter);
+      kill(F("INVOP"),operand);
     }
     // Falling out of the switch means move on to the next opcode
     progCounter+=2;
@@ -596,7 +584,7 @@ byte RMFT2::getFlag(byte id,byte mask) {
 }
 
 void RMFT2::kill(const FSH * reason, int operand) {
-     if (reason) DIAG(F("RMFT ERROR at pc=%d, cab=%d, %S %d"), progCounter,loco, reason, operand);
+     if (reason) DIAG(F("EXRAIL ERROR pc=%d, cab=%d, %S %d"), progCounter,loco, reason, operand);
      else if (diag) DIAG(F("ENDTASK at pc=%d"), progCounter); 
      delete this;
 }
