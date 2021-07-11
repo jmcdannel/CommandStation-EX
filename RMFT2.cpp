@@ -545,6 +545,22 @@ void RMFT2::loop2() {
              invert=false;
             }
        break;
+
+          
+       case OPCODE_SERVO:
+        { // OPCODE_SERVO,id,OPCODE_PAD,I_SPLIT(position),OPCODE_PAD,profile,
+          const byte paramCount=4;
+          int params[paramCount]; // = {activePos, inactivePos, profile, initialState}
+          progCounter+=2; // move on to second param which is split
+          byte pos1 =  GETFLASH(RMFT2::RouteCode+progCounter+1);
+          params[0]=getIntOperand(pos1);
+          params[1]=params[0];
+          params[2]=GETFLASH(RMFT2::RouteCode+progCounter+1);
+          params[3]=0;          
+          IODevice::configure(operand, IODevice::CONFIGURE_SERVO, paramCount, params);
+          IODevice::write(operand, 1);  // Reposition Servo
+          }
+        break;
           
        case OPCODE_ROUTE:
        case OPCODE_AUTOMATION:
