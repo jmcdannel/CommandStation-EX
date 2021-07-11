@@ -48,6 +48,11 @@ void IODevice::begin() {
   // Allocates 32 pins 164-195
   MCP23017::create(164, 16, 0x20);
   MCP23017::create(180, 16, 0x21);
+
+  // Call the begin() methods of each configured device in turn
+  for (IODevice *dev=_firstDevice; dev!=NULL; dev = dev->_nextDevice) {
+    dev->_begin();
+  }
 }
 
 // Overarching static loop() method for the IODevice subsystem.  Works through the
@@ -163,6 +168,19 @@ void IODevice::write(VPIN vpin, int value) {
 #endif
 }
 
+// Write analogue value to virtual pin(s).  If multiple devices are allocated the same pin
+//  then only the first one found will be used.
+void IODevice::writeAnalogue(VPIN vpin, int value, int profile) {
+  IODevice *dev = findDevice(vpin);
+  if (dev) {
+    dev->_writeAnalogue(vpin, value, profile);
+    return;
+  }
+#ifdef DIAG_IO
+  //DIAG(F("IODevice::writeAnalogue(): Vpin ID %d not found!"), (int)vpin);
+#endif
+}
+
 void IODevice::setGPIOInterruptPin(int16_t pinNumber) {
   if (pinNumber >= 0)
     pinMode2(pinNumber, INPUT_PULLUP);
@@ -217,17 +235,17 @@ bool IODevice::owns(VPIN id) {
 // a write to the VPIN from outside the device is passed to the device, but a 
 // call to writeDownstream will pass it to another device with the same
 // VPIN number if one exists.
-void IODevice::writeDownstream(VPIN vpin, int value) {
-  for (IODevice *dev = _nextDevice; dev != 0; dev = dev->_nextDevice) {
-    if (dev->owns(vpin)) {
-      dev->_write(vpin, value);
-      return;
-    }
-  }
-#ifdef DIAG_IO
-  //DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
-#endif  
-} 
+// void IODevice::writeDownstream(VPIN vpin, int value) {
+//   for (IODevice *dev = _nextDevice; dev != 0; dev = dev->_nextDevice) {
+//     if (dev->owns(vpin)) {
+//       dev->_write(vpin, value);
+//       return;
+//     }
+//   }
+// #ifdef DIAG_IO
+//   //DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
+// #endif  
+// } 
 
 // Read value from virtual pin.
 bool IODevice::read(VPIN vpin) {

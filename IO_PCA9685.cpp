@@ -140,9 +140,38 @@ void PCA9685::_write(VPIN vpin, int value) {
   }
 }
 
+// Device-specific writeAnalogue function, invoked from IODevice::writeAnalogue().
+void PCA9685::_writeAnalogue(VPIN vpin, int value, int profile) {
+  #ifdef DIAG_IO
+  DIAG(F("PCA9685 WriteAnalogue Vpin:%d Value:%d Profile:%d"), vpin, value, profile);
+  #endif
+  int pin = vpin - _firstVpin;
+  if (value > 4095) value = 4095;
+  else if (value < 0) value = 0;
+
+  struct ServoData *s = _servoData[pin];
+
+  if (!s) {
+    // Servo pin not configured, so configure now.
+    s = _servoData[pin] = (struct ServoData *) calloc(sizeof(struct ServoData), 1);
+    s->activePosition = 410;  // Default to 2ms pulse
+    s->inactivePosition = 205; // and 1ms pulse
+    s->currentPosition = value; // Don't know where we're moving from.
+  }
+  s->profile = profile;
+  // Animated profile.  Initiate the appropriate action.
+  s->numSteps = profile==Fast ? 10 : 
+                profile==Medium ? 20 : 
+                profile==Slow ? 40 : 
+                profile==Bounce ? sizeof(_bounceProfile) : 
+                1;
+  s->stepNumber = 0;
+  s->toPosition = min(value, 4095);
+  s->fromPosition = s->currentPosition;
+}
+
 void PCA9685::_loop(unsigned long currentMicros) {
-  unsigned int currentTime = (unsigned int) currentMicros;
-  if (currentTime - _lastRefreshTime >= refreshInterval * 1000) {
+  if (currentMicros - _lastRefreshTime >= refreshInterval * 1000) {
     for (int pin=0; pin<_nPins; pin++) {
       updatePosition(pin);
     }
@@ -157,6 +186,7 @@ void PCA9685::updatePosition(uint8_t pin) {
   if (!s) return;
   if (s->numSteps == 0) return; // No animation in progress
   if (s->stepNumber < s->numSteps) {
+    // Animation in progress, reposition servo
     s->stepNumber++;
     if (s->profile == Bounce) {
       // Retrieve step positions from array in flash
@@ -173,8 +203,10 @@ void PCA9685::updatePosition(uint8_t pin) {
     s->stepNumber++;
   } else if (s->stepNumber == s->numSteps + _catchupSteps 
             && s->currentPosition != 4095 && s->currentPosition != 0) {
-    // Switch off PWM to prevent annoying servo buzz
+#ifdef IO_SWITCH_OFF_SERVO
+    // Wait has finished, so switch off PWM to prevent annoying servo buzz
     writeDevice(pin, 0);
+#endif
     s->numSteps = 0;  // Done now.
   }
 }
