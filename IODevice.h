@@ -26,10 +26,18 @@
 // Define symbol DIAG_LOOPTIMES to enable CS loop execution time to be reported
 #define DIAG_LOOPTIMES
 
-// Define symbol IO_NO_HAL to reduce FLASH footpring when HAL features not required
+// Define symbol IO_NO_HAL to reduce FLASH footprint when HAL features not required
+// The HAL is disabled by default on Nano and Uno platforms, because of limited flash space.
 #if defined(ARDUINO_AVR_NANO) || defined(ARDUINO_AVR_UNO) 
 #define IO_NO_HAL
 #endif
+
+// Define symbol IO_SWITCH_OFF_SERVO to set the PCA9685 output to 0 when an 
+// animation has completed.  This switches off the servo motor, preventing 
+// the continuous buzz sometimes found on servos, and reducing the 
+// power consumption of the servo when inactive.
+// It is recommended to enable this, unless it causes you problems.
+#define IO_SWITCH_OFF_SERVO
 
 #include "DIAG.h"
 #include "FSH.h"
@@ -82,6 +90,9 @@ public:
 
   // write invokes the IODevice instance's _write method.
   static void write(VPIN vpin, int value);
+
+  // write invokes the IODevice instance's _writeAnalogue method (not applicable for digital outputs)
+  static void writeAnalogue(VPIN vpin, int value, int profile);
 
   // check whether the pin supports notification.  If so, then regular _read calls are not required.
   static bool hasCallback(VPIN vpin);
@@ -140,6 +151,11 @@ protected:
   // Method to write new state (optionally implemented within device class)
   virtual void _write(VPIN vpin, int value) {
     (void)vpin; (void)value;
+  };
+
+  // Method to write an analogue value (optionally implemented within device class)
+  virtual  void _writeAnalogue(VPIN vpin, int value, int profile) {
+    (void)vpin; (void)value; (void) profile;
   };
 
   // Method called from within a filter device to trigger its output (which may
@@ -227,8 +243,9 @@ private:
   // Device-specific initialisation
   void _begin();
   bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]);
-  // Device-specific write function.
+  // Device-specific write functions.
   void _write(VPIN vpin, int value);
+  void _writeAnalogue(VPIN vpin, int value, int profile);
   void _loop(unsigned long currentMicros);
   void updatePosition(uint8_t pin);
   void writeDevice(uint8_t pin, int value);
@@ -246,14 +263,17 @@ private:
     uint16_t toPosition : 12;
     uint8_t stepNumber;
     uint8_t numSteps;
-  };
+  }; // 12 bytes per element, i.e. per pin in use
   struct ServoData *_servoData [16];
+
+  static const uint16_t _defaultActivePosition = 410;
+  static const uint16_t _defaultInactivePosition = 205;
 
   static const uint8_t _catchupSteps = 5; // number of steps to wait before switching servo off
   static const byte FLASH _bounceProfile[30];
 
   const unsigned int refreshInterval = 50; // refresh every 50ms
-  unsigned int _lastRefreshTime; // low 16-bits of millis() count.
+  unsigned long _lastRefreshTime; // last seen value of micros() count
 
   // structures for setting up non-blocking writes to servo controller
   I2CRB requestBlock;

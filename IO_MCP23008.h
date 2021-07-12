@@ -22,7 +22,7 @@
 
 #include "IO_GPIOBase.h"
 
-class MCP23008 : public GPIOBase {
+class MCP23008 : public GPIOBase<uint8_t> {
 public:
   static void create(VPIN firstVpin, uint8_t nPins, uint8_t I2CAddress, int interruptPin=-1) {
     new MCP23008(firstVpin, nPins, I2CAddress, interruptPin);
@@ -31,7 +31,7 @@ public:
 private:
   // Constructor
   MCP23008(VPIN firstVpin, uint8_t nPins, uint8_t I2CAddress, int interruptPin=-1)
-    : GPIOBase((FSH *)F("MCP23008"), firstVpin, min(nPins, 8), I2CAddress, interruptPin) {
+    : GPIOBase<uint8_t>((FSH *)F("MCP23008"), firstVpin, min(nPins, 8), I2CAddress, interruptPin) {
 
     requestBlock.setRequestParams(_I2CAddress, inputBuffer, sizeof(inputBuffer),
       outputBuffer, sizeof(outputBuffer));

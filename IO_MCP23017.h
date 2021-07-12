@@ -28,7 +28,7 @@
  * IODevice subclass for MCP23017 16-bit I/O expander.
  */
  
-class MCP23017 : public GPIOBase {
+class MCP23017 : public GPIOBase<uint16_t> {
 public:
   static void create(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin=-1) {
     new MCP23017(vpin, min(nPins,16), I2CAddress, interruptPin);
@@ -37,7 +37,7 @@ public:
 private:
   // Constructor
   MCP23017(VPIN vpin, int nPins, uint8_t I2CAddress, int interruptPin=-1) 
-    : GPIOBase((FSH *)F("MCP23017"), vpin, nPins, I2CAddress, interruptPin) 
+    : GPIOBase<uint16_t>((FSH *)F("MCP23017"), vpin, nPins, I2CAddress, interruptPin) 
   {
     requestBlock.setRequestParams(_I2CAddress, inputBuffer, sizeof(inputBuffer),
       outputBuffer, sizeof(outputBuffer));

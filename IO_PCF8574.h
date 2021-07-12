@@ -22,15 +22,15 @@
 
 #include "IO_GPIOBase.h"
 
-class PCF8574 : public GPIOBase {
+class PCF8574 : public GPIOBase<uint8_t> {
 public:
   static void create(VPIN firstVpin, uint8_t nPins, uint8_t I2CAddress, int interruptPin=-1) {
     new PCF8574(firstVpin, nPins, I2CAddress, interruptPin);
   }
 
 private:
-  PCF8574(VPIN firstVpin, uint8_t nPins, uint8_t I2CAddress, int interruptPin)
-    : GPIOBase((FSH *)F("PCF8574"), firstVpin, min(nPins, 8), I2CAddress, interruptPin) 
+  PCF8574(VPIN firstVpin, uint8_t nPins, uint8_t I2CAddress, int interruptPin=-1)
+    : GPIOBase<uint8_t>((FSH *)F("PCF8574"), firstVpin, min(nPins, 8), I2CAddress, interruptPin) 
   {
     requestBlock.setReadParams(_I2CAddress, inputBuffer, 1);
   }

@@ -24,6 +24,12 @@
 #include "I2CManager.h"
 #include "DIAG.h"
 
+// GPIOBase is defined as a class template.  This allows it to be instantiated by
+// subclasses with different types, according to the number of pins on the GPIO module.
+// For example, GPIOBase<uint8_t> for 8 pins, GPIOBase<uint16_t> for 16 pins etc.
+// A module with up to 64 pins can be handled in this way (uint64_t).
+
+template <class T>
 class GPIOBase : public IODevice {
 
 protected:
@@ -42,11 +48,12 @@ protected:
 
   // Data fields
   uint8_t _I2CAddress; 
-  // Allocate enough space for 16 input pins
-  uint16_t _portInputState; 
-  uint16_t _portOutputState;
-  uint16_t _portMode;
-  uint16_t _portPullup;
+  // Allocate enough space for all input pins
+  T _portInputState; 
+  T _portOutputState;
+  T _portMode;
+  T _portPullup;
+  T _portInvert;  // Inversion mask for inputs
   // Interval between refreshes of each input port
   static const int _portTickTime = 4000;
   unsigned long _lastLoopEntry = 0;
@@ -64,5 +71,161 @@ protected:
   I2CRB requestBlock;
   FSH *_deviceName;
 };
+
+// Because class GPIOBase is a template, the implementation (below) must be contained within the same
+// file as the class declaration (above).  Otherwise it won't compile!
+
+// Constructor
+template <class T>
+GPIOBase<T>::GPIOBase(FSH *deviceName, VPIN firstVpin, uint8_t nPins, uint8_t I2CAddress, int interruptPin) {
+  _deviceName = deviceName;
+  _firstVpin = firstVpin;
+  _nPins = nPins;
+  _I2CAddress = I2CAddress;
+  _gpioInterruptPin = interruptPin;
+  _notifyCallbackChain = 0;
+  // Add device to list of devices.
+  addDevice(this);
+
+  // Configure pin used for GPIO extender notification of change (if allocated)
+  if (_gpioInterruptPin >= 0) 
+    pinMode(_gpioInterruptPin, INPUT_PULLUP);
+
+  I2CManager.begin();
+  I2CManager.setClock(400000);
+  if (I2CManager.exists(I2CAddress)) {
+    _display();
+    _portMode = 0;  // default to input mode
+    _portPullup = -1; // default to pullup enabled
+    _portInputState = 0; 
+    _portInvert = 0;  // default to no invert
+  }
+  _deviceState = DEVSTATE_NORMAL;
+  _lastLoopEntry = micros();
+}
+
+template <class T>
+void GPIOBase<T>::_begin() {}
+
+// Configuration parameters for inputs: 
+//  params[0]: enable pullup
+//  params[1]: invert input (optional)
+template <class T>
+bool GPIOBase<T>::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) {
+  if (configType != CONFIGURE_INPUT) return false;
+  if (paramCount == 0 || paramCount > 2) return false;
+  bool pullup = params[0];
+  int pin = vpin - _firstVpin;
+  #ifdef DIAG_IO
+  DIAG(F("%S I2C:x%x Config Pin:%d Val:%d"), _deviceName, _I2CAddress, pin, pullup);
+  #endif
+  uint16_t mask = 1 << pin;
+  if (pullup) 
+    _portPullup |= mask;
+  else
+    _portPullup &= ~mask;
+
+  // Call subclass's virtual function to write to device
+  _writePullups();
+  // Re-read port following change
+  _readGpioPort();
+
+  if (paramCount == 2) {
+    bool invert = params[1];
+    if (invert) 
+      _portInvert |= mask;
+    else
+      _portInvert &= ~mask;
+  }
+
+  return true;
+}
+
+// Periodically read the input port
+template <class T>
+void GPIOBase<T>::_loop(unsigned long currentMicros) {
+  #ifdef DIAG_IO
+  T lastPortStates = _portInputState;
+  #endif
+  if (_deviceState == DEVSTATE_SCANNING && !requestBlock.isBusy()) {
+    uint8_t status = requestBlock.status;
+    if (status == I2C_STATUS_OK) {
+      _deviceState = DEVSTATE_NORMAL;
+    } else {
+      _deviceState = DEVSTATE_FAILED;
+      DIAG(F("%S I2C:x%x Error:%d"), _deviceName, _I2CAddress, status);
+    }
+    _processCompletion(status);
+  }
+  // Check if interrupt configured.  If so, and pin is not pulled down, finish.
+  if (_gpioInterruptPin >= 0) {
+    if (digitalRead(_gpioInterruptPin)) return;
+  } else
+  // No interrupt pin.  Check if tick has elapsed.  If not, finish.
+  if (currentMicros - _lastLoopEntry < _portTickTime) return;
+
+  // TODO: Could suppress reads if there are no pins configured as inputs!
+
+  // Read input
+  _lastLoopEntry = currentMicros;
+  if (_deviceState == DEVSTATE_NORMAL) {
+    _readGpioPort(false);  // Initiate non-blocking read
+    _deviceState= DEVSTATE_SCANNING;
+  }
+
+  #ifdef DIAG_IO
+  T differences = lastPortStates ^ _portInputState;
+  if (differences)
+    DIAG(F("%S I2C:x%x PortStates:%x"), _deviceName, _I2CAddress, _portInputState);
+  #endif
+}
+
+template <class T>
+void GPIOBase<T>::_display() {
+  DIAG(F("%S I2C:x%x Configured on Vpins:%d-%d"), _deviceName, _I2CAddress, 
+    _firstVpin, _firstVpin+_nPins-1);
+}
+
+template <class T>
+void GPIOBase<T>::_write(VPIN vpin, int value) {
+  int pin = vpin - _firstVpin;
+  T mask = 1 << pin;
+  #ifdef DIAG_IO
+  DIAG(F("%S I2C:x%x Write Pin:%d Val:%d"), _deviceName, _I2CAddress, pin, value);
+  #endif
+
+  // Set port mode output
+  if (!(_portMode & mask)) {
+    _portMode |= mask;
+    _writePortModes();
+  }
+
+  // Update port output state
+  if (value) 
+    _portOutputState |= mask;
+  else
+    _portOutputState &= ~mask;
+
+  // Call subclass's virtual function to write to device.
+  return _writeGpioPort();
+}
+
+template <class T>
+int GPIOBase<T>::_read(VPIN vpin) {
+  int pin = vpin - _firstVpin;
+  T mask = 1 << pin;
+
+  // Set port mode to input
+  if (_portMode & mask) {
+    _portMode &= ~mask;
+    _writePortModes();
+    // Port won't have been read yet, so read it now.
+    _readGpioPort();
+    #ifdef DIAG_IO
+    DIAG(F("%S I2C:x%x PortStates:%x"), _deviceName, _I2CAddress, _portInputState);
+    #endif
+  }
+  return ((_portInputState ^ _portInvert) & mask) ? 1 : 0;
+}
 
 #endif

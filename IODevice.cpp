@@ -17,13 +17,9 @@
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-// TODO: Enable optional use of interrupt pin on MCP23008/23017 modules, 
-// chained from one module to another, into an Arduino digital input.
-// When the Arduino digital input is pulled DOWN, it indicates that the 
-// modules need to be scanned.  Once the interrupting module(s) has been
-// scanned, then the digital input will deactivate (pulled UP).
 
 #include <Arduino.h>
+#include "DIO2.h"
 #include "IODevice.h"
 #include "DIAG.h" 
 #include "FSH.h"
@@ -52,6 +48,11 @@ void IODevice::begin() {
   // Allocates 32 pins 164-195
   MCP23017::create(164, 16, 0x20);
   MCP23017::create(180, 16, 0x21);
+
+  // Call the begin() methods of each configured device in turn
+  for (IODevice *dev=_firstDevice; dev!=NULL; dev = dev->_nextDevice) {
+    dev->_begin();
+  }
 }
 
 // Overarching static loop() method for the IODevice subsystem.  Works through the
@@ -73,15 +74,16 @@ void IODevice::loop() {
   static unsigned long maxElapsed = 0;
   static unsigned long lastOutputTime = 0;
   static unsigned long count = 0;
+  const unsigned long interval = (unsigned long)5 * 1000 * 1000; // 5 seconds in microsec
   unsigned long elapsed = currentMicros - lastMicros;
   // Ignore long loop counts while message is still outputting
   if (currentMicros - lastOutputTime > 3000UL) {
     if (elapsed > maxElapsed) maxElapsed = elapsed;
   }
   count++;
-  if (currentMicros - lastOutputTime > 5000000UL) {
+  if (currentMicros - lastOutputTime > interval) {
     if (lastOutputTime > 0) 
-      LCD(1,F("Loop=%lus,%lus max"), (unsigned long)5000000UL/count, maxElapsed);
+      LCD(1,F("Loop=%lus,%lus max"), interval/count, maxElapsed);
     maxElapsed = 0;
     count = 0;
     lastOutputTime = currentMicros;
@@ -166,9 +168,22 @@ void IODevice::write(VPIN vpin, int value) {
 #endif
 }
 
+// Write analogue value to virtual pin(s).  If multiple devices are allocated the same pin
+//  then only the first one found will be used.
+void IODevice::writeAnalogue(VPIN vpin, int value, int profile) {
+  IODevice *dev = findDevice(vpin);
+  if (dev) {
+    dev->_writeAnalogue(vpin, value, profile);
+    return;
+  }
+#ifdef DIAG_IO
+  //DIAG(F("IODevice::writeAnalogue(): Vpin ID %d not found!"), (int)vpin);
+#endif
+}
+
 void IODevice::setGPIOInterruptPin(int16_t pinNumber) {
   if (pinNumber >= 0)
-    pinMode(pinNumber, INPUT_PULLUP);
+    pinMode2(pinNumber, INPUT_PULLUP);
   _gpioInterruptPin = pinNumber;
 }
 
@@ -220,17 +235,17 @@ bool IODevice::owns(VPIN id) {
 // a write to the VPIN from outside the device is passed to the device, but a 
 // call to writeDownstream will pass it to another device with the same
 // VPIN number if one exists.
-void IODevice::writeDownstream(VPIN vpin, int value) {
-  for (IODevice *dev = _nextDevice; dev != 0; dev = dev->_nextDevice) {
-    if (dev->owns(vpin)) {
-      dev->_write(vpin, value);
-      return;
-    }
-  }
-#ifdef DIAG_IO
-  //DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
-#endif  
-} 
+// void IODevice::writeDownstream(VPIN vpin, int value) {
+//   for (IODevice *dev = _nextDevice; dev != 0; dev = dev->_nextDevice) {
+//     if (dev->owns(vpin)) {
+//       dev->_write(vpin, value);
+//       return;
+//     }
+//   }
+// #ifdef DIAG_IO
+//   //DIAG(F("IODevice::write(): Vpin ID %d not found!"), (int)vpin);
+// #endif  
+// } 
 
 // Read value from virtual pin.
 bool IODevice::read(VPIN vpin) {
@@ -267,16 +282,18 @@ bool IODevice::configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, i
     return false;
 }
 void IODevice::write(VPIN vpin, int value) {
-  pinMode(vpin, OUTPUT);
-  digitalWrite(vpin, value);
+  GPIO_pin_t gpioPin = Arduino_to_GPIO_pin(vpin);
+  pinMode2f(gpioPin, OUTPUT);
+  digitalWrite2f(gpioPin, value);
 }
 bool IODevice::hasCallback(VPIN vpin) { 
   (void)vpin;  // Avoid compiler warnings
   return false; 
 }
 bool IODevice::read(VPIN vpin) { 
-  pinMode(vpin, INPUT_PULLUP);
-  return digitalRead(vpin);
+  GPIO_pin_t gpioPin = Arduino_to_GPIO_pin(vpin);
+  pinMode2f(gpioPin, INPUT_PULLUP);
+  return digitalRead2f(gpioPin);
 }
 void IODevice::loop() {}
 void IODevice::DumpAll() {
@@ -321,10 +338,10 @@ bool ArduinoPins::_configure(VPIN id, ConfigTypeEnum configType, int paramCount,
   uint8_t index = (pin-_firstVpin) / 8;
   if (pullup) {
     _pinPullups[index] |= mask;
-    pinMode(pin, INPUT_PULLUP);
+    pinMode2(pin, INPUT_PULLUP);
   } else {
     _pinPullups[index] &= ~mask;
-    pinMode(pin, INPUT);
+    pinMode2(pin, INPUT);
   }
   return true;
 }
@@ -335,8 +352,9 @@ void ArduinoPins::_write(VPIN id, int value) {
   #ifdef DIAG_IO
   DIAG(F("Arduino Write Pin:%d Val:%d"), pin, value);
   #endif
-  digitalWrite(pin, value);
-  pinMode(pin, OUTPUT);
+  GPIO_pin_t gpioPin = Arduino_to_GPIO_pin(pin);
+  digitalWrite2f(gpioPin, value);
+  pinMode2f(gpioPin, OUTPUT);
 }
 
 // Device-specific read function.
@@ -344,11 +362,12 @@ int ArduinoPins::_read(VPIN id) {
   int pin = id;
   uint8_t mask = 1 << ((pin-_firstVpin) % 8);
   uint8_t index = (pin-_firstVpin) / 8;
+  GPIO_pin_t gpioPin = Arduino_to_GPIO_pin(pin);
   if (_pinPullups[index] & mask) 
-    pinMode(pin, INPUT_PULLUP);
+    pinMode2f(gpioPin, INPUT_PULLUP);
   else
-    pinMode(pin, INPUT);
-  int value = digitalRead(pin);
+    pinMode2(gpioPin, INPUT);
+  int value = digitalRead2f(gpioPin);
   #ifdef DIAG_IO
   //DIAG(F("Arduino Read Pin:%d Value:%d"), pin, value);
   #endif
