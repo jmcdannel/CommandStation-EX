@@ -280,8 +280,6 @@ private:
   uint8_t outputBuffer[5];
 };
 
-
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 /*
  * IODevice subclass for DCC accessory decoder.
@@ -324,7 +322,11 @@ private:
   int _read(VPIN vpin);
   void _display();
 
+  void fastWriteDigital(uint8_t pin, uint8_t value);
+  bool fastReadDigital(uint8_t pin);
+
   uint8_t *_pinPullups;
+  uint8_t *_pinModes; // each bit is 1 for output, 0 for input
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
