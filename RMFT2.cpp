@@ -561,17 +561,8 @@ void RMFT2::loop2() {
        break;
 
           
-       case OPCODE_SERVO:
-        { // OPCODE_SERVO,V(id),OPCODE_PAD,V(position),OPCODE_PAD,V(profile),
-          const byte paramCount=4;
-          int params[paramCount]; // = {activePos, inactivePos, profile, initialState}
-          params[0]=GET_OPERAND(1);
-          params[1]=params[0];
-          params[2]=GET_OPERAND(2);
-          params[3]=0;          
-          IODevice::configure(operand, IODevice::CONFIGURE_SERVO, paramCount, params);
-          IODevice::write(operand, 1);  // Reposition Servo
-          }
+       case OPCODE_SERVO: // OPCODE_SERVO,V(id),OPCODE_PAD,V(position),OPCODE_PAD,V(profile),
+        IODevice::writeAnalogue(operand,GET_OPERAND(1),GET_OPERAND(2));          
         break;
           
        case OPCODE_ROUTE:
