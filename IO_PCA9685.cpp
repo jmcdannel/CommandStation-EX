@@ -170,6 +170,17 @@ void PCA9685::_writeAnalogue(VPIN vpin, int value, int profile) {
   s->fromPosition = s->currentPosition;
 }
 
+// _isActive returns true if the device is currently in executing an animation, 
+//  changing the output over a period of time.
+bool PCA9685::_isActive(VPIN vpin) {
+  int pin = vpin - _firstVpin;
+  struct ServoData *s = _servoData[pin];
+  if (!s) 
+    return false; // No structure means no animation!
+  else
+    return (s->numSteps != 0);
+}
+
 void PCA9685::_loop(unsigned long currentMicros) {
   if (currentMicros - _lastRefreshTime >= refreshInterval * 1000) {
     for (int pin=0; pin<_nPins; pin++) {

@@ -19,11 +19,14 @@
 
 
 #include <Arduino.h>
-#include "DIO2.h"
 #include "IODevice.h"
 #include "DIAG.h" 
 #include "FSH.h"
 #include "IO_MCP23017.h"
+
+#if defined(ARDUINO_ARCH_AVR) || defined(ARDUINO_ARCH_MEGAAVR)
+#define USE_FAST_IO
+#endif
 
 //==================================================================================================================
 // Static methods
@@ -39,7 +42,7 @@
 // and PCA9685.
 void IODevice::begin() {
   // Initialise the IO subsystem
-  ArduinoPins::create(2, 48);  // Reserve pins numbered 2-49 for direct access
+  ArduinoPins::create(2, NUM_DIGITAL_PINS-3);  // Reserve pins for direct access
   // Predefine two PCA9685 modules 0x40-0x41
   // Allocates 32 pins 100-131
   PCA9685::create(100, 16, 0x40);
@@ -181,9 +184,19 @@ void IODevice::writeAnalogue(VPIN vpin, int value, int profile) {
 #endif
 }
 
+// isActive returns true if the device is currently in an animation of some sort, e.g. is changing
+//  the output over a period of time.
+bool IODevice::isActive(VPIN vpin) {
+  IODevice *dev = findDevice(vpin);
+  if (dev) 
+    return dev->_isActive(vpin);
+  else
+    return false;
+}
+
 void IODevice::setGPIOInterruptPin(int16_t pinNumber) {
   if (pinNumber >= 0)
-    pinMode2(pinNumber, INPUT_PULLUP);
+    pinMode(pinNumber, INPUT_PULLUP);
   _gpioInterruptPin = pinNumber;
 }
 
@@ -282,18 +295,16 @@ bool IODevice::configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, i
     return false;
 }
 void IODevice::write(VPIN vpin, int value) {
-  GPIO_pin_t gpioPin = Arduino_to_GPIO_pin(vpin);
-  pinMode2f(gpioPin, OUTPUT);
-  digitalWrite2f(gpioPin, value);
+  digitalWrite(vpin, value);
+  pinMode(vpin, OUTPUT);
 }
 bool IODevice::hasCallback(VPIN vpin) { 
   (void)vpin;  // Avoid compiler warnings
   return false; 
 }
 bool IODevice::read(VPIN vpin) { 
-  GPIO_pin_t gpioPin = Arduino_to_GPIO_pin(vpin);
-  pinMode2f(gpioPin, INPUT_PULLUP);
-  return digitalRead2f(gpioPin);
+  pinMode(vpin, INPUT_PULLUP);
+  return digitalRead(vpin);
 }
 void IODevice::loop() {}
 void IODevice::DumpAll() {
@@ -320,54 +331,81 @@ IONotifyStateChangeCallback *IODevice::registerInputChangeNotification(IONotifyS
 ArduinoPins::ArduinoPins(VPIN firstVpin, int nPins) {
   _firstVpin = firstVpin;
   _nPins = nPins;
-  _pinPullups = (uint8_t *)calloc(1, (_nPins+7)/8);
-  for (int i=0; i<(_nPins+7)/8; i++) _pinPullups[i] = 0;
+  uint8_t arrayLen = (_nPins+7)/8;
+  _pinPullups = (uint8_t *)calloc(2, arrayLen);
+  _pinModes = (&_pinPullups[0]) + arrayLen;
+  for (int i=0; i<arrayLen; i++) {
+    _pinPullups[i] = 0;
+    _pinModes[i] = 0;
+  }
 }
 
-// Device-specific pin configuration
-bool ArduinoPins::_configure(VPIN id, ConfigTypeEnum configType, int paramCount, int params[]) {
+// Device-specific pin configuration.  Configure should be called infrequently so simplify 
+// code by using the standard pinMode function.
+bool ArduinoPins::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) {
   if (configType != CONFIGURE_INPUT) return false;
   if (paramCount != 1) return false;
   bool pullup = params[0];
 
-  int pin = id;
+  int pin = vpin;
   #ifdef DIAG_IO
   DIAG(F("Arduino _configurePullup Pin:%d Val:%d"), pin, pullup);
   #endif
   uint8_t mask = 1 << ((pin-_firstVpin) % 8);
   uint8_t index = (pin-_firstVpin) / 8;
+  _pinModes[index] &= ~mask;  // set to input mode
   if (pullup) {
     _pinPullups[index] |= mask;
-    pinMode2(pin, INPUT_PULLUP);
+    pinMode(pin, INPUT_PULLUP);
   } else {
     _pinPullups[index] &= ~mask;
-    pinMode2(pin, INPUT);
+    pinMode(pin, INPUT);
   }
   return true;
 }
 
 // Device-specific write function.
-void ArduinoPins::_write(VPIN id, int value) {
-  int pin = id;
+void ArduinoPins::_write(VPIN vpin, int value) {
+  int pin = vpin;
   #ifdef DIAG_IO
   DIAG(F("Arduino Write Pin:%d Val:%d"), pin, value);
   #endif
-  GPIO_pin_t gpioPin = Arduino_to_GPIO_pin(pin);
-  digitalWrite2f(gpioPin, value);
-  pinMode2f(gpioPin, OUTPUT);
+  uint8_t mask = 1 << ((pin-_firstVpin) % 8);
+  uint8_t index = (pin-_firstVpin) / 8;
+  // First update the output state, then set into write mode if not already.
+  #if defined(USE_FAST_IO)
+  fastWriteDigital(pin, value);
+  #else
+  digitalWrite(pin, value);
+  #endif
+  if (!(_pinModes[index] & mask)) {
+    // Currently in read mode, change to write mode
+    _pinModes[index] |= mask;
+    // Since mode changes should be infrequent, use standard pinMode function
+    pinMode(pin, OUTPUT);
+  }
 }
 
 // Device-specific read function.
-int ArduinoPins::_read(VPIN id) {
-  int pin = id;
+int ArduinoPins::_read(VPIN vpin) {
+  int pin = vpin;
   uint8_t mask = 1 << ((pin-_firstVpin) % 8);
   uint8_t index = (pin-_firstVpin) / 8;
-  GPIO_pin_t gpioPin = Arduino_to_GPIO_pin(pin);
-  if (_pinPullups[index] & mask) 
-    pinMode2f(gpioPin, INPUT_PULLUP);
-  else
-    pinMode2(gpioPin, INPUT);
-  int value = digitalRead2f(gpioPin);
+  if (_pinModes[index] & mask) {
+    // Currently in write mode, change to read mode
+    _pinModes[index] &= ~mask;
+    // Since mode changes should be infrequent, use standard pinMode function
+    if (_pinPullups[index] & mask) 
+      pinMode(pin, INPUT_PULLUP);
+    else
+      pinMode(pin, INPUT);
+  }
+  #if defined(USE_FAST_IO)
+  int value = fastReadDigital(pin);
+  #else
+  int value = digitalRead(pin);
+  #endif
+
   #ifdef DIAG_IO
   //DIAG(F("Arduino Read Pin:%d Value:%d"), pin, value);
   #endif
@@ -379,3 +417,30 @@ void ArduinoPins::_display() {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#if defined(USE_FAST_IO)
+
+void ArduinoPins::fastWriteDigital(uint8_t pin, uint8_t value) {
+  if (pin >= NUM_DIGITAL_PINS) return;
+  uint8_t mask = digitalPinToBitMask(pin);
+  uint8_t port = digitalPinToPort(pin);
+  volatile uint8_t *outPortAdr = portOutputRegister(port);
+  noInterrupts();
+  if (value) 
+    *outPortAdr |= mask;
+  else
+    *outPortAdr &= ~mask;
+  interrupts();
+}
+
+bool ArduinoPins::fastReadDigital(uint8_t pin) {
+  if (pin >= NUM_DIGITAL_PINS) return false;
+  uint8_t mask = digitalPinToBitMask(pin);
+  uint8_t port = digitalPinToPort(pin);
+  volatile uint8_t *inPortAdr = portInputRegister(port);
+  // read input
+  bool result = (*inPortAdr & mask) != 0;  
+  return result;
+}
+
+#endif

@@ -94,6 +94,10 @@ public:
   // write invokes the IODevice instance's _writeAnalogue method (not applicable for digital outputs)
   static void writeAnalogue(VPIN vpin, int value, int profile);
 
+  // isActive returns true if the device is currently in an animation of some sort, e.g. is changing
+  //  the output over a period of time.
+  static bool isActive(VPIN vpin);
+
   // check whether the pin supports notification.  If so, then regular _read calls are not required.
   static bool hasCallback(VPIN vpin);
 
@@ -178,6 +182,13 @@ protected:
     return 0;
   };
 
+  // _isActive returns true if the device is currently in an animation of some sort, e.g. is changing
+  //  the output over a period of time.  Returns false unless overridden in sub class.
+  virtual bool _isActive(VPIN vpin) {
+      (void)vpin;
+      return false;
+  }
+
   // Method to perform updates on an ongoing basis (optionally implemented within device class)
   virtual void _loop(unsigned long currentMicros) {
     (void)currentMicros; // Suppress compiler warning.
@@ -246,6 +257,7 @@ private:
   // Device-specific write functions.
   void _write(VPIN vpin, int value);
   void _writeAnalogue(VPIN vpin, int value, int profile);
+  bool _isActive(VPIN vpin);
   void _loop(unsigned long currentMicros);
   void updatePosition(uint8_t pin);
   void writeDevice(uint8_t pin, int value);
@@ -254,16 +266,17 @@ private:
   uint8_t _I2CAddress; // 0x40-0x43 possible
 
   struct ServoData {
-    uint16_t activePosition : 12;
-    uint16_t inactivePosition : 12;
-    int8_t state;
-    uint8_t profile;
+    uint16_t activePosition : 12; // Config parameter
+    uint16_t inactivePosition : 12; // Config parameter
     uint16_t currentPosition : 12;
     uint16_t fromPosition : 12;
-    uint16_t toPosition : 12;
-    uint8_t stepNumber;
-    uint8_t numSteps;
+    uint16_t toPosition : 12; 
+    uint8_t profile;  // Config parameter
+    uint8_t stepNumber; // Index of current step (starting from 0)
+    uint8_t numSteps;  // Number of steps in animation, or 0 if none in progress.
+    int8_t state;
   }; // 12 bytes per element, i.e. per pin in use
+  
   struct ServoData *_servoData [16];
 
   static const uint16_t _defaultActivePosition = 410;
@@ -279,8 +292,6 @@ private:
   I2CRB requestBlock;
   uint8_t outputBuffer[5];
 };
-
-
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 /*
@@ -324,7 +335,11 @@ private:
   int _read(VPIN vpin);
   void _display();
 
+  void fastWriteDigital(uint8_t pin, uint8_t value);
+  bool fastReadDigital(uint8_t pin);
+
   uint8_t *_pinPullups;
+  uint8_t *_pinModes; // each bit is 1 for output, 0 for input
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
