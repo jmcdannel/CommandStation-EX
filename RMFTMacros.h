@@ -1,5 +1,5 @@
 /*
- *  © 2020, Chris Harlow. All rights reserved.
+ *  © 2020,2021 Chris Harlow. All rights reserved.
  *  
  *  This file is part of CommandStation-EX
  *
@@ -19,7 +19,7 @@
 #ifndef RMFTMacros_H
 #define RMFTMacros_H
 
-// The entire automation script is contained within a byte arrayRMFT2::RouteCode[]
+// The entire automation script is contained within a byte array RMFT2::RouteCode[]
 // made up of opcode and parameter pairs.
 // ech opcode is a 1 byte operation plus 2 byte operand. 
 // The array is normally built using the macros below as this makes it easier 
@@ -38,16 +38,19 @@
 #define ROUTE(id)  OPCODE_ROUTE, V(id), 
 #define SEQUENCE(id)  OPCODE_SEQUENCE, V(id), 
 #define ENDTASK OPCODE_ENDTASK,NOP,
+#define DONE OPCODE_ENDTASK,NOP,
 #define ENDEXRAIL OPCODE_ENDTASK,NOP,OPCODE_ENDEXRAIL,NOP };
  
 #define AFTER(sensor_id) OPCODE_AT,V(sensor_id),OPCODE_AFTER,V(sensor_id),
 #define AMBER(signal_id) OPCODE_AMBER,V(signal_id),
 #define AT(sensor_id) OPCODE_AT,V(sensor_id),
 #define CALL(route) OPCODE_CALL,V(route),
+#define CLOSE(id)  OPCODE_CLOSE,V(id),
 #define DELAY(mindelay) OPCODE_DELAY,V(mindelay),
 #define DELAYMINS(mindelay) OPCODE_DELAYMINS,V(mindelay),
 #define DELAYRANDOM(mindelay,maxdelay) OPCODE_DELAY,V(mindelay),OPCODE_RANDWAIT,V(maxdelay-mindelay),
 #define ENDIF  OPCODE_ENDIF,NOP,
+#define ESTOP OPCODE_SPEED,V(1), 
 #define FOFF(func) OPCODE_FOFF,V(func),
 #define FOLLOW(route) OPCODE_FOLLOW,V(route),
 #define FON(func) OPCODE_FON,V(func),
@@ -81,11 +84,9 @@
 #define SIGNAL(redpin,amberpin,greenpin) OPCODE_SIGNAL,V(redpin),OPCODE_PAD,V(amberpin),OPCODE_PAD,V(greenpin), 
 #define SERVO_TURNOUT(pin,activeAngle,inactiveAngle) OPCODE_SERVOTURNOUT,V(pin),OPCODE_PAD,V(actibeAngle),OPCODE
 #define PIN_TURNOUT(pin) OPCODE_PINTURNOUT,V(pin), 
+#define THROW(id)  OPCODE_THROW,V(id),
 #define TURNOUT(id,addr,subaddr) OPCODE_TURNOUT,V(id),OPCODE_PAD,V(addr),OPCODE_PAD,V(subaddr),
 #define UNJOIN OPCODE_UNJOIN,NOP,
-#define ESTOP OPCODE_SPEED,V(1), 
-#define THROW(id)  OPCODE_THROW,V(id),
-#define CLOSE(id)  OPCODE_CLOSE,V(id),
 #define UNLATCH(sensor_id) OPCODE_UNLATCH,V(sensor_id),
    
 // The following are the operation codes (or instructions) for a kind of virtual machine.
@@ -111,6 +112,4 @@ enum OPCODE : byte {OPCODE_THROW,OPCODE_CLOSE,
              OPCODE_ONCLOSE, OPCODE_ONTHROW, OPCODE_SERVOTURNOUT, OPCODE_PINTURNOUT,  
              OPCODE_ROUTE,OPCODE_AUTOMATION,OPCODE_SEQUENCE,OPCODE_ENDTASK,OPCODE_ENDEXRAIL
              };
-
-
 #endif

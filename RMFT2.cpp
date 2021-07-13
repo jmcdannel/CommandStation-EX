@@ -63,6 +63,16 @@ byte RMFT2::flags[MAX_FLAGS];
      byte opcode=GET_OPCODE;
      if (opcode==OPCODE_ENDEXRAIL) break;
 
+     if (opcode==OPCODE_SIGNAL) {
+      VPIN red=GET_OPERAND(0);
+      VPIN amber=GET_OPERAND(1);
+      VPIN green=GET_OPERAND(2);
+      IODevice::write(red,1);
+      if (amber) IODevice::write(amber,0);
+      IODevice::write(green,0);
+      continue;
+     }
+     
      if (opcode==OPCODE_TURNOUT) {
       VPIN id=GET_OPERAND(0);
       int addr=GET_OPERAND(1);
@@ -84,6 +94,7 @@ byte RMFT2::flags[MAX_FLAGS];
       Turnout::createVpin(id,id);
       continue;
      }
+     // other opcodes are not needed on this pass
   } 
   SKIPOP; // include ENDROUTES opcode
   DIAG(F("EXRAIL %db, MAX_FLAGS=%d"), progCounter,MAX_FLAGS);
@@ -347,7 +358,7 @@ void RMFT2::loop2() {
   // Attention: Returning from this switch leaves the program counter unchanged.
   //            This is used for unfinished waits for timers or sensors.
   //            Breaking from this switch will step to the next step in the route. 
-  switch (opcode) {
+  switch ((OPCODE)opcode) {
     
     case OPCODE_THROW:
          Turnout::activate(operand, true);
