@@ -131,7 +131,8 @@ void Turnout::activate(bool state) {
     data.active = state;
     switch (data.type) {
       case TURNOUT_DCC:
-        DCC::setAccessory((data.dccAccessoryData.address >> 2), (data.dccAccessoryData.address & 3), state);
+        DCC::setAccessory(((data.dccAccessoryData.address-1) >> 2 + 1), 
+          ((data.dccAccessoryData.address-1) & 3), state);
         break;
 #ifndef IO_NO_HAL
       case TURNOUT_SERVO:
