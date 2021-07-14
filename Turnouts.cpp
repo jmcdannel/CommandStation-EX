@@ -18,6 +18,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
  */
+#define EESTOREDEBUG 
 #include "defines.h"
 #include "Turnouts.h"
 #include "EEStore.h"
@@ -132,6 +133,10 @@ void Turnout::activate(bool state) {
     data.active = state;
     switch (data.type) {
       case TURNOUT_DCC:
+      #ifdef EESTOREDEBUG
+        DIAG(F("Turnout setAccessory(%d,%d,%d)"),(data.dccAccessoryData.address >> 2),
+                                                 (data.dccAccessoryData.address & 3), state);
+      #endif
         DCC::setAccessory((data.dccAccessoryData.address >> 2), (data.dccAccessoryData.address & 3), state);
         break;
 #ifndef IO_NO_HAL
