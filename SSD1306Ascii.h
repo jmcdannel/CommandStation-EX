@@ -72,8 +72,6 @@ class SSD1306AsciiWire : public LCDDisplay {
   static const DevType FLASH Adafruit128x64;
   static const DevType FLASH SH1106_132x64;
 
-  bool isBusy() { return requestBlock.isBusy(); }
-
  private:
   // Cursor column.
   uint8_t m_col;
@@ -97,7 +95,6 @@ class SSD1306AsciiWire : public LCDDisplay {
 
   uint8_t m_i2cAddr;
 
-  I2CRB requestBlock;
   uint8_t outputBuffer[fontWidth+letterSpacing+1];
 
   static const uint8_t blankPixels[];

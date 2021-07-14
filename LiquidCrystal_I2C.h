@@ -88,9 +88,7 @@ private:
   uint8_t _displaymode;
   uint8_t _backlightval;
 
-  I2CRB requestBlock;
   uint8_t outputBuffer[4];
-  bool isBusy() { return requestBlock.isBusy(); }
 };
 
 #endif
