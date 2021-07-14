@@ -206,7 +206,7 @@ void Turnout::load(){
         tt=createDCC(data.id, ((data.dccAccessoryData.address-1)>>2)+1, (data.dccAccessoryData.address-1)&3); // DCC-based turnout
         break;
       case TURNOUT_LCN:
-        tt=createLCN(data.id, lastKnownState);
+        // LCN turnouts are created when the remote device sends a message.
         break;
 #ifndef IO_NO_HAL
       case TURNOUT_SERVO:
@@ -240,14 +240,17 @@ void Turnout::store(){
   EEStore::eeStore->data.nTurnouts=0;
 
   while(tt!=NULL){
+    // LCN turnouts aren't saved to EEPROM
+    if (tt->data.type != TURNOUT_LCN) {  
 #ifdef EESTOREDEBUG
-    print(tt);
+      print(tt);
 #endif
-    tt->num = EEStore::pointer() + offsetof(TurnoutData, tStatus); // Save pointer to tstatus byte within EEPROM
-    EEPROM.put(EEStore::pointer(),tt->data);
-    EEStore::advance(tt->data.size);
+      tt->num = EEStore::pointer() + offsetof(TurnoutData, tStatus); // Save pointer to tstatus byte within EEPROM
+      EEPROM.put(EEStore::pointer(),tt->data);
+      EEStore::advance(tt->data.size);
+      EEStore::eeStore->data.nTurnouts++;
+    }
     tt=tt->nextTurnout;
-    EEStore::eeStore->data.nTurnouts++;
   }
 }
 
