@@ -10,7 +10,7 @@
       static void inline loop() {RMFT2::loop();}
   };
 
-  #include "myAutomation.h"
+  #include "RMFTMacros.h"
   
 #else 
   // Dummy RMFT 

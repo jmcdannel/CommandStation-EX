@@ -237,8 +237,17 @@ void RMFT2::emitWithrottleRouteList(Print* stream) {
         first=false;
         StringFormatter::send(stream,F("PRT]\\[Routes}|{Route]\\[Set}|{2]\\[Handoff}|{4\nPRL"));
       }
-      if (opcode==OPCODE_AUTOMATION) StringFormatter::send(stream,F("]\\[A%d}|{Auto_%d}|{4"), route, route);
-      else                           StringFormatter::send(stream,F("]\\[R%d}|{Route_%d}|{2"), route, route);      
+      // Locate route/automation description in RouteDescription which is id, pointer, id, pointer etc.
+      for (int descSlot=0; ; descSlot+=2) {
+           int descId=pgm_read_word(RouteDescription+descSlot);
+           if (descId==0) break; // shouldn't happen... all automations/routes have descriptions
+           if (descId==route) {
+                 char * desc=pgm_read_word(RouteDescription+descSlot+1);
+                 if (diag) DIAG(F("descId=%d, desc=%x, %S"), descId, desc, desc);
+                 StringFormatter::send(stream,F("]\\[%c%d}|{%S}|{2"),(opcode==OPCODE_AUTOMATION)?'A':'R', route, desc);
+                 break;
+           }
+      }
     }
   }
   if (!first) StringFormatter::send(stream,F("\n"));  // end of route list 

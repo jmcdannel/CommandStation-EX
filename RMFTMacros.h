@@ -27,15 +27,22 @@
 // - padding must be applied to ensure the correct alignment of the next instruction
 // - large parameters must be split up
 // - multiple parameters aligned correctly
-// - a single macro requires multiple operations 
+// - a single macro requires multiple operations
+
+// Descriptive texts for routes and animations are created in a sepaerate array RMFT2::RouteDescription[]
+// but since the C preprocessor is such a wimp, we have to pass over the myAutomation.h 3 times with
+// different macros. 
+ 
 
 #define V(val) (val)&0x7F,(val)>>7
 #define NOP 0,0
 #define B(val) val,0
 
+// CAUTION: The macros below are triple passed over myAutomation.h
+// Adding a macro here must have equivalent macros or no-ops  in pass 2 and 3
 #define EXRAIL const  FLASH  byte RMFT2::RouteCode[] = {
-#define AUTOMATION(id)  OPCODE_AUTOMATION, V(id), 
-#define ROUTE(id)  OPCODE_ROUTE, V(id), 
+#define AUTOMATION(id, description)  OPCODE_AUTOMATION, V(id), 
+#define ROUTE(id, description)  OPCODE_ROUTE, V(id), 
 #define SEQUENCE(id)  OPCODE_SEQUENCE, V(id), 
 #define ENDTASK OPCODE_ENDTASK,NOP,
 #define DONE OPCODE_ENDTASK,NOP,
@@ -88,28 +95,137 @@
 #define TURNOUT(id,addr,subaddr) OPCODE_TURNOUT,V(id),OPCODE_PAD,V(addr),OPCODE_PAD,V(subaddr),
 #define UNJOIN OPCODE_UNJOIN,NOP,
 #define UNLATCH(sensor_id) OPCODE_UNLATCH,V(sensor_id),
-   
-// The following are the operation codes (or instructions) for a kind of virtual machine.
-// Each instruction is normally 2 bytes long with an operation code followed by a parameter.
-// In cases where more than one parameter is required, the first parameter is followed by one  
-// or more OPCODE_PAD instructions with the subsequent parameters. This wastes a byte but makes 
-// searching easier as a parameter can never be confused with an opcode. 
-// 
-enum OPCODE : byte {OPCODE_THROW,OPCODE_CLOSE,
-             OPCODE_FWD,OPCODE_REV,OPCODE_SPEED,OPCODE_INVERT_DIRECTION,
-             OPCODE_RESERVE,OPCODE_FREE,
-             OPCODE_AT,OPCODE_AFTER,
-             OPCODE_LATCH,OPCODE_UNLATCH,OPCODE_SET,OPCODE_RESET,
-             OPCODE_IF,OPCODE_IFNOT,OPCODE_ENDIF,OPCODE_IFRANDOM,
-             OPCODE_DELAY,OPCODE_DELAYMINS,OPCODE_RANDWAIT,
-             OPCODE_FON,OPCODE_FOFF,
-             OPCODE_RED,OPCODE_GREEN,OPCODE_AMBER,
-             OPCODE_SERVO,OPCODE_SIGNAL,OPCODE_TURNOUT,
-             OPCODE_PAD,OPCODE_FOLLOW,OPCODE_CALL,OPCODE_RETURN,
-             OPCODE_JOIN,OPCODE_UNJOIN,OPCODE_READ_LOCO1,OPCODE_READ_LOCO2,OPCODE_POM,
-             OPCODE_START,OPCODE_SETLOCO,
-             OPCODE_PAUSE, OPCODE_RESUME,
-             OPCODE_ONCLOSE, OPCODE_ONTHROW, OPCODE_SERVOTURNOUT, OPCODE_PINTURNOUT,  
-             OPCODE_ROUTE,OPCODE_AUTOMATION,OPCODE_SEQUENCE,OPCODE_ENDTASK,OPCODE_ENDEXRAIL
-             };
+
+// PASS1 Build RouteCode
+#include "myAutomation.h"
+
+
+#undef EXRAIL
+#undef AUTOMATION 
+#undef ROUTE 
+#undef SEQUENCE 
+#undef ENDTASK
+#undef DONE
+#undef ENDEXRAIL
+ 
+#undef AFTER
+#undef AMBER
+#undef AT
+#undef CALL
+#undef CLOSE
+#undef DELAY
+#undef DELAYMINS
+#undef DELAYRANDOM
+#undef ENDIF
+#undef ESTOP
+#undef FOFF
+#undef FOLLOW
+#undef FON
+#undef FREE
+#undef FWD
+#undef GREEN
+#undef IF
+#undef IFNOT
+#undef IFRANDOM
+#undef INVERT_DIRECTION
+#undef JOIN
+#undef LATCH
+#undef ONCLOSE
+#undef ONTHROW
+#undef PAUSE
+#undef POM
+#undef READ_LOCO
+#undef RED
+#undef RESERVE
+#undef RESET
+#undef RESUME
+#undef RETURN
+#undef REV
+#undef START
+#undef SERVO
+#undef SETLOCO
+#undef SET
+#undef SPEED
+#undef STOP
+#undef SIGNAL
+#undef SERVO_TURNOUT
+#undef PIN_TURNOUT
+#undef THROW
+#undef TURNOUT
+#undef UNJOIN
+#undef UNLATCH
+//==================
+
+// Pass2 Macros convert descriptions to flash constants 
+#define EXRAIL 
+#define AUTOMATION(id, description)  const char exdesc_##id[] FLASH = description; 
+#define ROUTE(id, description)    const char exdesc_##id[] FLASH = description; 
+#define SEQUENCE(id) 
+#define ENDTASK
+#define DONE
+#define ENDEXRAIL
+ 
+#define AFTER(sensor_id)
+#define AMBER(signal_id)
+#define AT(sensor_id)
+#define CALL(route) 
+#define CLOSE(id) 
+#define DELAY(mindelay)
+#define DELAYMINS(mindelay)
+#define DELAYRANDOM(mindelay,maxdelay) 
+#define ENDIF  
+#define ESTOP 
+#define FOFF(func)
+#define FOLLOW(route) 
+#define FON(func) 
+#define FREE(blockid) 
+#define FWD(speed) 
+#define GREEN(signal_id)
+#define IF(sensor_id) 
+#define IFNOT(sensor_id)
+#define IFRANDOM(percent) 
+#define INVERT_DIRECTION 
+#define JOIN 
+#define LATCH(sensor_id) 
+#define ONCLOSE(turnout_id)
+#define ONTHROW(turnout_id) 
+#define PAUSE 
+#define POM(cv,value)
+#define READ_LOCO 
+#define RED(signal_id) 
+#define RESERVE(blockid) 
+#define RESET(sensor_id) 
+#define RESUME 
+#define RETURN 
+#define REV(speed) 
+#define START(route) 
+#define SERVO(id,position,profile) 
+#define SETLOCO(loco) 
+#define SET(sensor_id) 
+#define SPEED(speed) 
+#define STOP 
+#define SIGNAL(redpin,amberpin,greenpin) 
+#define SERVO_TURNOUT(pin,activeAngle,inactiveAngle) 
+#define PIN_TURNOUT(pin) 
+#define THROW(id)  
+#define TURNOUT(id,addr,subaddr) 
+#define UNJOIN 
+#define UNLATCH(sensor_id) 
+
+#include "myAutomation.h"
+ 
+// PASS3 create descriptions array
+#undef EXRAIL
+#undef AUTOMATION 
+#undef ROUTE 
+#undef ENDEXRAIL
+ 
+
+#define EXRAIL const  FLASH char * const  RMFT2::RouteDescription[] = {  
+#define AUTOMATION(id, description)  (char*)id, exdesc_##id, 
+#define ROUTE(id, description)    (char*)id, exdesc_##id, 
+#define ENDEXRAIL  0,0};
+
+#include "myAutomation.h"
+
 #endif

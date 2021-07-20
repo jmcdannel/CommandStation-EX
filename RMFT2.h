@@ -20,7 +20,32 @@
 #define RMFT2_H
 #include "FSH.h"
 #include "IODevice.h"
-#include "RMFTMacros.h"
+   
+// The following are the operation codes (or instructions) for a kind of virtual machine.
+// Each instruction is normally 2 bytes long with an operation code followed by a parameter.
+// In cases where more than one parameter is required, the first parameter is followed by one  
+// or more OPCODE_PAD instructions with the subsequent parameters. This wastes a byte but makes 
+// searching easier as a parameter can never be confused with an opcode. 
+// 
+enum OPCODE : byte {OPCODE_THROW,OPCODE_CLOSE,
+             OPCODE_FWD,OPCODE_REV,OPCODE_SPEED,OPCODE_INVERT_DIRECTION,
+             OPCODE_RESERVE,OPCODE_FREE,
+             OPCODE_AT,OPCODE_AFTER,
+             OPCODE_LATCH,OPCODE_UNLATCH,OPCODE_SET,OPCODE_RESET,
+             OPCODE_IF,OPCODE_IFNOT,OPCODE_ENDIF,OPCODE_IFRANDOM,
+             OPCODE_DELAY,OPCODE_DELAYMINS,OPCODE_RANDWAIT,
+             OPCODE_FON,OPCODE_FOFF,
+             OPCODE_RED,OPCODE_GREEN,OPCODE_AMBER,
+             OPCODE_SERVO,OPCODE_SIGNAL,OPCODE_TURNOUT,
+             OPCODE_PAD,OPCODE_FOLLOW,OPCODE_CALL,OPCODE_RETURN,
+             OPCODE_JOIN,OPCODE_UNJOIN,OPCODE_READ_LOCO1,OPCODE_READ_LOCO2,OPCODE_POM,
+             OPCODE_START,OPCODE_SETLOCO,
+             OPCODE_PAUSE, OPCODE_RESUME,
+             OPCODE_ONCLOSE, OPCODE_ONTHROW, OPCODE_SERVOTURNOUT, OPCODE_PINTURNOUT,  
+             OPCODE_ROUTE,OPCODE_AUTOMATION,OPCODE_SEQUENCE,OPCODE_ENDTASK,OPCODE_ENDEXRAIL
+             };
+
+
  
   // Flag bits for status of hardware and TPL
   static const short SECTION_FLAG = 0x01;
@@ -66,6 +91,7 @@ private:
     
    static bool diag;
    static const  FLASH  byte RouteCode[];
+   static const  FLASH char * const  RouteDescription[];
    static byte flags[MAX_FLAGS];
  
  // Local variables - exist for each instance/task 
