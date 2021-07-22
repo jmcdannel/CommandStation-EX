@@ -227,30 +227,7 @@ bool RMFT2::parseSlash(Print * stream, byte & paramCount, int16_t p[]) {
 // handing over the loco to the automation.
 // Routes are given "Set" buttons and do not cause the loco to be handed over. 
 void RMFT2::emitWithrottleRouteList(Print* stream) {
-  bool first=true;
-  for (int progCounter=0;;SKIPOP) {
-    byte opcode=GET_OPCODE;
-    if (opcode==OPCODE_ENDEXRAIL) break;
-    if (opcode==OPCODE_ROUTE || opcode==OPCODE_AUTOMATION) {
-      int  route=GET_OPERAND(0);
-      if (first) {
-        first=false;
-        StringFormatter::send(stream,F("PRT]\\[Routes}|{Route]\\[Set}|{2]\\[Handoff}|{4\nPRL"));
-      }
-      // Locate route/automation description in RouteDescription which is id, pointer, id, pointer etc.
-      for (int descSlot=0; ; descSlot+=2) {
-           int descId=pgm_read_word(RouteDescription+descSlot);
-           if (descId==0) break; // shouldn't happen... all automations/routes have descriptions
-           if (descId==route) {
-                 char * desc=pgm_read_word(RouteDescription+descSlot+1);
-                 if (diag) DIAG(F("descId=%d, desc=%x, %S"), descId, desc, desc);
-                 StringFormatter::send(stream,F("]\\[%c%d}|{%S}|{2"),(opcode==OPCODE_AUTOMATION)?'A':'R', route, desc);
-                 break;
-           }
-      }
-    }
-  }
-  if (!first) StringFormatter::send(stream,F("\n"));  // end of route list 
+   StringFormatter::send(stream,F("PRT]\\[Routes}|{Route]\\[Set}|{2]\\[Handoff}|{4\nPRL%S\n"),RouteDescription);
 }
 
 // An instance of this object guides a loco through a journey, or simply animates something. 

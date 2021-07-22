@@ -30,7 +30,7 @@
 // - a single macro requires multiple operations
 
 // Descriptive texts for routes and animations are created in a sepaerate array RMFT2::RouteDescription[]
-// but since the C preprocessor is such a wimp, we have to pass over the myAutomation.h 3 times with
+// but since the C preprocessor is such a wimp, we have to pass over the myAutomation.h 2 times with
 // different macros. 
  
 
@@ -157,13 +157,13 @@
 //==================
 
 // Pass2 Macros convert descriptions to flash constants 
-#define EXRAIL 
-#define AUTOMATION(id, description)  const char exdesc_##id[] FLASH = description; 
-#define ROUTE(id, description)    const char exdesc_##id[] FLASH = description; 
+#define EXRAIL  const FLASH char  RMFT2::RouteDescription[]=
+#define AUTOMATION(id, description)  "]\\[A" #id "}|{" description "}|{4"
+#define ROUTE(id, description)    "]\\[R" #id "}|{" description "}|{2"
 #define SEQUENCE(id) 
 #define ENDTASK
 #define DONE
-#define ENDEXRAIL
+#define ENDEXRAIL  "";
  
 #define AFTER(sensor_id)
 #define AMBER(signal_id)
@@ -214,18 +214,5 @@
 
 #include "myAutomation.h"
  
-// PASS3 create descriptions array
-#undef EXRAIL
-#undef AUTOMATION 
-#undef ROUTE 
-#undef ENDEXRAIL
- 
-
-#define EXRAIL const  FLASH char * const  RMFT2::RouteDescription[] = {  
-#define AUTOMATION(id, description)  (char*)id, exdesc_##id, 
-#define ROUTE(id, description)    (char*)id, exdesc_##id, 
-#define ENDEXRAIL  0,0};
-
-#include "myAutomation.h"
 
 #endif

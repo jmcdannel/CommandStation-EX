@@ -91,7 +91,7 @@ private:
     
    static bool diag;
    static const  FLASH  byte RouteCode[];
-   static const  FLASH char * const  RouteDescription[];
+   static const  FLASH char RouteDescription[];
    static byte flags[MAX_FLAGS];
  
  // Local variables - exist for each instance/task 
