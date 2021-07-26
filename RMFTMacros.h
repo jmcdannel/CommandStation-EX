@@ -156,7 +156,8 @@
 #undef UNLATCH
 //==================
 
-// Pass2 Macros convert descriptions to flash constants 
+// Pass2 Macros convert descriptions to a flash string constant in withrottle format.
+// Most macros are simply ignored in this pass.  
 #define EXRAIL  const FLASH char  RMFT2::RouteDescription[]=
 #define AUTOMATION(id, description)  "]\\[A" #id "}|{" description "}|{4"
 #define ROUTE(id, description)    "]\\[R" #id "}|{" description "}|{2"

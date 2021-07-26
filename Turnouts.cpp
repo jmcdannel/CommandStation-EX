@@ -191,7 +191,7 @@ bool Turnout::remove(int n){
 
 void Turnout::load(){
   struct TurnoutData data;
-  Turnout *tt;
+  Turnout *tt=NULL;
 
   for(int i=0;i<EEStore::eeStore->data.nTurnouts;i++){
     // Retrieve data

@@ -22,9 +22,8 @@
 #include "DIAG.h"
 #include "WiThrottle.h"
 #include "DCCEXParser.h"
-#include "Sensors.h"
 #include "Turnouts.h"
-#include "Outputs.h"
+
 
 // Command parsing keywords
 const int16_t HASH_KEYWORD_EXRAIL=15435;    
@@ -409,17 +408,11 @@ void RMFT2::loop2() {
       break;
 
     case OPCODE_SET:
-      {
-        Output * o=Output::get(operand);
-        if (o) o->activate(true); 
-      }
+      IODevice::write(operand,1);
       break;
   
     case OPCODE_RESET:
-      {
-        Output * o=Output::get(operand);
-        if (o) o->activate(false); 
-      }
+      IODevice::write(operand,0);
       break;
     
     case OPCODE_PAUSE:
