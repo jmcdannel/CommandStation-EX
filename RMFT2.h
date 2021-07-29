@@ -48,8 +48,8 @@ enum OPCODE : byte {OPCODE_THROW,OPCODE_CLOSE,
 
  
   // Flag bits for status of hardware and TPL
-  static const short SECTION_FLAG = 0x01;
-  static const short SENSOR_FLAG = 0x02;
+  static const byte SECTION_FLAG = 0x01;
+  static const byte LATCH_FLAG = 0x02;
 
   static const byte  MAX_STACK_DEPTH=4;
  
@@ -65,6 +65,7 @@ enum OPCODE : byte {OPCODE_THROW,OPCODE_CLOSE,
     ~RMFT2();
     static void readLocoCallback(int cv);
     static void emitWithrottleRouteList(Print* stream); 
+    static void createNewTask(int route, uint16_t cab);
     static void turnoutEvent(VPIN id, bool thrown);  
 private: 
     static void ComandFilter(Print * stream, byte & opcode, byte & paramCount, int p[]);
@@ -72,7 +73,7 @@ private:
     static void streamFlags(Print* stream);
     static void setFlag(VPIN id,byte onMask, byte OffMask=0);
     static byte getFlag(VPIN id,byte mask);   
-    static int locateRouteStart(int _route);
+    static int locateRouteStart(int16_t _route);
     static int progtrackLocoId;
     static void doSignal(VPIN id,bool red, bool amber, bool green); 
 
@@ -80,7 +81,7 @@ private:
     static RMFT2 * pausingTask;
     void delayMe(long millisecs);
     void driveLoco(byte speedo);
-    bool readSensor(VPIN id);
+    bool readSensor(int16_t sensorId);
     bool skipIfBlock();
     bool readLoco();
     void showManual();

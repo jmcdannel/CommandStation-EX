@@ -66,9 +66,10 @@ byte RMFT2::flags[MAX_FLAGS];
       VPIN red=GET_OPERAND(0);
       VPIN amber=GET_OPERAND(1);
       VPIN green=GET_OPERAND(2);
-      IODevice::write(red,1);
-      if (amber) IODevice::write(amber,0);
-      IODevice::write(green,0);
+      // Caution: IOdevice is inverted logic
+      IODevice::write(red,LOW);
+      if (amber) IODevice::write(amber,HIGH);
+      IODevice::write(green,HIGH);
       continue;
      }
      
@@ -154,7 +155,7 @@ bool RMFT2::parseSlash(Print * stream, byte & paramCount, int16_t p[]) {
                    if (flag) {
                      StringFormatter::send(stream,F("\nflags[%d} "),id);
                      if (flag & SECTION_FLAG) StringFormatter::send(stream,F(" RESERVED"));
-                     if (flag & SENSOR_FLAG) StringFormatter::send(stream,F(" SET"));
+                     if (flag & LATCH_FLAG) StringFormatter::send(stream,F(" LATCHED"));
                      }                 
                  }
                  StringFormatter::send(stream,F(" *>\n"));
@@ -184,9 +185,12 @@ bool RMFT2::parseSlash(Print * stream, byte & paramCount, int16_t p[]) {
             case HASH_KEYWORD_START: // </ START [cab] route >
                  if (paramCount<2 || paramCount>3) return false;
                  {
-                  byte route=(paramCount==2) ? p[1] : p[2];
-                  uint16_t cab=(paramCount==2)? 0 : p[1];                 
-                  new RMFT2(route,cab);                    
+                  int route=(paramCount==2) ? p[1] : p[2];
+                  uint16_t cab=(paramCount==2)? 0 : p[1];
+                  int pc=locateRouteStart(route);                 
+                  if (pc<0) return false;
+                    RMFT2* task=new RMFT2(pc);
+                    task->loco=cab;                    
                  }
               return true;
                  
@@ -208,11 +212,11 @@ bool RMFT2::parseSlash(Print * stream, byte & paramCount, int16_t p[]) {
                  return true;
                 
             case HASH_KEYWORD_LATCH:
-                 setFlag(p[1], SENSOR_FLAG);
+                 setFlag(p[1], LATCH_FLAG);
                  return true;
    
             case HASH_KEYWORD_UNLATCH:
-                 setFlag(p[1], 0, SENSOR_FLAG);
+                 setFlag(p[1], 0, LATCH_FLAG);
                  return true;
                   
             default:
@@ -229,10 +233,6 @@ void RMFT2::emitWithrottleRouteList(Print* stream) {
    StringFormatter::send(stream,F("PRT]\\[Routes}|{Route]\\[Set}|{2]\\[Handoff}|{4\nPRL%S\n"),RouteDescription);
 }
 
-// An instance of this object guides a loco through a journey, or simply animates something. 
-RMFT2::RMFT2(int route, uint16_t cab) : RMFT2(locateRouteStart(route)) {
-  loco=cab;
-}
 
 RMFT2::RMFT2(int progCtr) {
   progCounter=progCtr;
@@ -264,12 +264,22 @@ RMFT2::~RMFT2() {
        }
 }
 
+void RMFT2::createNewTask(int route, uint16_t cab) {
+      int pc=locateRouteStart(route);
+      if (pc<0) return;
+      RMFT2* task=new RMFT2(pc);
+      task->loco=cab;
+}
 
-int RMFT2::locateRouteStart(int _route) {
+   
+int RMFT2::locateRouteStart(int16_t _route) {
   if (_route==0) return 0; // Route 0 is always start of ROUTES for default startup 
   for (int progCounter=0;;SKIPOP) {
     byte opcode=GET_OPCODE;
-    if (opcode==OPCODE_ENDEXRAIL) return -1;
+    if (opcode==OPCODE_ENDEXRAIL) {
+      DIAG(F("RMFT2 sequence %d not found"), _route);
+      return -1;
+    }
     if ((opcode==OPCODE_ROUTE || opcode==OPCODE_AUTOMATION || opcode==OPCODE_SEQUENCE) 
        &&  _route==(int)GET_OPERAND(0)) return progCounter;
   }
@@ -285,11 +295,12 @@ void RMFT2::driveLoco(byte speed) {
      // TODO... if broadcast speed 0 then pause all other tasks. 
 }
 
-bool RMFT2::readSensor(VPIN id) {
-  if (getFlag(id,SENSOR_FLAG)) return true; // latched on
-  short s= IODevice::read(id);
-  if (s==1 && diag) DIAG(F("EXRAIL Sensor %d hit"),id);
-  return s==1;
+bool RMFT2::readSensor(int16_t sensorId) {
+  VPIN vpin=abs(sensorId);
+  if (getFlag(vpin,LATCH_FLAG)) return true; // latched on
+  bool s= (!IODevice::read(vpin)) ^ (sensorId<0);
+  if (s && diag) DIAG(F("EXRAIL Sensor %d hit"),sensorId);
+  return s;
 }
 
 bool RMFT2::skipIfBlock() {
@@ -338,8 +349,8 @@ void RMFT2::loop2() {
    if (delayTime!=0 && millis()-delayStart < delayTime) return;
      
   byte opcode = GET_OPCODE;
-  byte operand =  GET_OPERAND(0);
-   
+  int16_t operand =  GET_OPERAND(0);
+  // if (diag) DIAG(F("RMFT2 %d %d"),opcode,operand); 
   // Attention: Returning from this switch leaves the program counter unchanged.
   //            This is used for unfinished waits for timers or sensors.
   //            Breaking from this switch will step to the next step in the route. 
@@ -400,19 +411,19 @@ void RMFT2::loop2() {
       break;
     
     case OPCODE_LATCH:
-      setFlag(operand,SENSOR_FLAG);
+      setFlag(operand,LATCH_FLAG);
       break;
     
     case OPCODE_UNLATCH:
-      setFlag(operand,0,SENSOR_FLAG);
+      setFlag(operand,0,LATCH_FLAG);
       break;
 
     case OPCODE_SET:
-      IODevice::write(operand,1);
+      IODevice::write(operand,LOW);
       break;
   
     case OPCODE_RESET:
-      IODevice::write(operand,0);
+      IODevice::write(operand,HIGH);
       break;
     
     case OPCODE_PAUSE:
@@ -533,14 +544,14 @@ void RMFT2::loop2() {
        case OPCODE_START:
            {
             // Create new task and transfer loco.....
-            // but cheat by swapping prog counters with new task  
-            new RMFT2(operand);
-            int swap=loopTask->progCounter;
-            loopTask->progCounter=progCounter+3;
-            progCounter=swap;
+            // but cheat by swapping prog counters with new task 
+            int newPc=locateRouteStart(operand);
+            if (newPc<0) break; 
+            new RMFT2(progCounter+3); // give new task my prog counter
+            progCounter=newPc;  // and I'll carry on from new task position
            }
            break;
-       
+           
        case OPCODE_SETLOCO:
            {
              loco=operand; 
@@ -610,9 +621,9 @@ void RMFT2::kill(const FSH * reason, int operand) {
      if (redpin!=id)continue;
      byte amberpin=GET_OPERAND(2);
      byte greenpin=GET_OPERAND(3);
-     IODevice::write(redpin,red);
-     if (amberpin) IODevice::write(amberpin,amber);
-     if (greenpin) IODevice::write(amberpin,green);
+     IODevice::write(redpin,!red);
+     if (amberpin) IODevice::write(amberpin,!amber);
+     if (greenpin) IODevice::write(amberpin,!green);
      return;
    }
   } 

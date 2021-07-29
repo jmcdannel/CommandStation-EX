@@ -155,7 +155,7 @@ void WiThrottle::parse(RingStream * stream, byte * cmdx) {
               // exrail routes are RA2Rn , Animations are RA2An 
               int route=getInt(cmd+5);
               uint16_t cab=cmd[4]=='A' ? mostRecentCab : 0; 
-              new RMFT2(route, cab);
+              RMFT2::createNewTask(route, cab);
             }
 #endif    
             else if (cmd[1]=='T' && cmd[2]=='A') { // PTA accessory toggle 

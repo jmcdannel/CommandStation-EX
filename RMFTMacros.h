@@ -34,12 +34,12 @@
 // different macros. 
  
 
-#define V(val) (val)&0x7F,(val)>>7
+#define V(val) ((int16_t)(val))&0x00FF,((int16_t)(val)>>8)&0x00FF
 #define NOP 0,0
-#define B(val) val,0
 
 // CAUTION: The macros below are triple passed over myAutomation.h
 // Adding a macro here must have equivalent macros or no-ops  in pass 2 and 3
+#define EXRAIL_PASS1
 #define EXRAIL const  FLASH  byte RMFT2::RouteCode[] = {
 #define AUTOMATION(id, description)  OPCODE_AUTOMATION, V(id), 
 #define ROUTE(id, description)  OPCODE_ROUTE, V(id), 
@@ -99,7 +99,7 @@
 // PASS1 Build RouteCode
 #include "myAutomation.h"
 
-
+#undef EXRAIL_PASS1
 #undef EXRAIL
 #undef AUTOMATION 
 #undef ROUTE 
