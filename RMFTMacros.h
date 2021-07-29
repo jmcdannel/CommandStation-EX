@@ -39,7 +39,7 @@
 
 // CAUTION: The macros below are triple passed over myAutomation.h
 // Adding a macro here must have equivalent macros or no-ops  in pass 2 and 3
-#define EXRAIL_PASS1
+#define ALIAS(name,value) const int name=value;
 #define EXRAIL const  FLASH  byte RMFT2::RouteCode[] = {
 #define AUTOMATION(id, description)  OPCODE_AUTOMATION, V(id), 
 #define ROUTE(id, description)  OPCODE_ROUTE, V(id), 
@@ -99,7 +99,7 @@
 // PASS1 Build RouteCode
 #include "myAutomation.h"
 
-#undef EXRAIL_PASS1
+#undef ALIAS
 #undef EXRAIL
 #undef AUTOMATION 
 #undef ROUTE 
@@ -157,7 +157,8 @@
 //==================
 
 // Pass2 Macros convert descriptions to a flash string constant in withrottle format.
-// Most macros are simply ignored in this pass.  
+// Most macros are simply ignored in this pass.
+#define ALIAS(name,value)  
 #define EXRAIL  const FLASH char  RMFT2::RouteDescription[]=
 #define AUTOMATION(id, description)  "]\\[A" #id "}|{" description "}|{4"
 #define ROUTE(id, description)    "]\\[R" #id "}|{" description "}|{2"
