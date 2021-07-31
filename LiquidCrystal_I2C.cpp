@@ -119,7 +119,7 @@ void LiquidCrystal_I2C::clearNative() {
 
 void LiquidCrystal_I2C::setRowNative(byte row) {
   int row_offsets[] = {0x00, 0x40, 0x14, 0x54};
-  if (row > lcdRows) {
+  if (row >= lcdRows) {
     row = lcdRows - 1;  // we count rows starting w/0
   }
   command(LCD_SETDDRAMADDR | (row_offsets[row]));
