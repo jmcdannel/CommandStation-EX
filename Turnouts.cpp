@@ -187,7 +187,7 @@ void Turnout::load(){
   struct TurnoutData data;
   Turnout *tt;
 
-  for(int i=0;i<EEStore::eeStore->data.nTurnouts;i++){
+  for(uint16_t i=0;i<EEStore::eeStore->data.nTurnouts;i++){
     // Retrieve data
     EEPROM.get(EEStore::pointer(), data);
     
