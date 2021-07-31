@@ -39,17 +39,18 @@
 
 class LCDDisplay : public DisplayInterface {
  public:
+  LCDDisplay() {};
   static const int MAX_LCD_ROWS = 8;
   static const int MAX_LCD_COLS = MAX_MSG_SIZE;
   static const long LCD_SCROLL_TIME = 3000;  // 3 seconds
 
   // Internally handled functions
   static void loop();
-  LCDDisplay* loop2(bool force);
-  void setRow(byte line);
-  void clear();
+  LCDDisplay* loop2(bool force) override;
+  void setRow(byte line) override;
+  void clear() override;
 
-  size_t write(uint8_t b);
+  size_t write(uint8_t b) override;
 
 protected:
   uint8_t lcdRows;

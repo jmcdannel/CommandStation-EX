@@ -36,24 +36,24 @@ private:
   }
   
   // The pin state is '1' if the pin is an input or if it is an output set to 1.  Zero otherwise. 
-  void _writeGpioPort() {
+  void _writeGpioPort() override {
     I2CManager.write(_I2CAddress, 1, _portOutputState | ~_portMode);
   }
 
   // The PCF8574 handles inputs by applying a weak pull-up when output is driven to '1'.
   // Therefore, writing '1' in _writePortModes is enough to set the module to input mode 
   // and enable pull-up.
-  void _writePullups() { }
+  void _writePullups() override { }
 
   // The pin state is '1' if the pin is an input or if it is an output set to 1.  Zero otherwise. 
-  void _writePortModes() {
+  void _writePortModes() override {
     I2CManager.write(_I2CAddress, 1, _portOutputState | ~_portMode);
   }
 
   // In immediate mode, _readGpioPort reads the device GPIO port and updates _portInputState accordingly.
   //  When not in immediate mode, it initiates a request using the request block and returns.
   //  When the request completes, _processCompletion finishes the operation.
-  void _readGpioPort(bool immediate) {
+  void _readGpioPort(bool immediate) override {
     if (immediate) {
       uint8_t buffer[1];
       I2CManager.read(_I2CAddress, buffer, 1);
@@ -66,14 +66,14 @@ private:
   }
 
   // This function is invoked when an I/O operation on the requestBlock completes.
-  void _processCompletion(uint8_t status) {
+  void _processCompletion(uint8_t status) override {
     if (status == I2C_STATUS_OK) 
       _portInputState = ((uint16_t)inputBuffer[0]) & 0xff;
     else  
       _portInputState = 0xff;
   }
 
-  void _setupDevice() { }
+  void _setupDevice() override { }
  
   uint8_t inputBuffer[1];
 };

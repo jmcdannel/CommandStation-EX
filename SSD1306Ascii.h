@@ -56,23 +56,23 @@ class SSD1306AsciiWire : public LCDDisplay {
   void begin(const DevType* dev, uint8_t i2cAddr);
 
   // Clear the display and set the cursor to (0, 0).
-  void clearNative();
+  void clearNative() override;
 
   // Set cursor to start of specified text line
-  void setRowNative(byte line);
+  void setRowNative(byte line) override;
 
   // Initialize the display controller.
   void init(const DevType* dev);
   
   // Write one character to OLED
-  size_t writeNative(uint8_t c);
+  size_t writeNative(uint8_t c) override;
 
   // Display characteristics / initialisation
   static const DevType FLASH Adafruit128x32;
   static const DevType FLASH Adafruit128x64;
   static const DevType FLASH SH1106_132x64;
 
-  bool isBusy() { return requestBlock.isBusy(); }
+  bool isBusy() override { return requestBlock.isBusy(); }
 
  private:
   // Cursor column.

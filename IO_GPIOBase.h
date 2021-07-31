@@ -36,15 +36,15 @@ protected:
   // Constructor
   GPIOBase(FSH *deviceName, VPIN firstVpin, uint8_t nPins, uint8_t I2CAddress, int interruptPin);
   // Device-specific initialisation
-  void _begin();
+  void _begin() override;
   // Device-specific pin configuration function.  
-  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]);
+  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) override;
   // Pin write function.
-  void _write(VPIN vpin, int value);
+  void _write(VPIN vpin, int value) override;
   // Pin read function.
-  int _read(VPIN vpin);
-  void _display();
-  void _loop(unsigned long currentMicros);
+  int _read(VPIN vpin) override;
+  void _display() override;
+  void _loop(unsigned long currentMicros) override;
 
   // Data fields
   uint8_t _I2CAddress; 
