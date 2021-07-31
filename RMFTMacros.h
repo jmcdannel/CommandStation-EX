@@ -67,6 +67,7 @@
 #define IF(sensor_id) OPCODE_IF,V(sensor_id),
 #define IFNOT(sensor_id) OPCODE_IFNOT,V(sensor_id),
 #define IFRANDOM(percent) OPCODE_IFRANDOM,V(percent),
+#define IFRESERVE(block) OPCODE_IFRESERVE,V(block),
 #define INVERT_DIRECTION OPCODE_INVERT_DIRECTION,NOP,
 #define JOIN OPCODE_JOIN,NOP,
 #define LATCH(sensor_id) OPCODE_LATCH,V(sensor_id),
@@ -127,6 +128,7 @@
 #undef IF
 #undef IFNOT
 #undef IFRANDOM
+#undef IFRESERVE
 #undef INVERT_DIRECTION
 #undef JOIN
 #undef LATCH
@@ -186,6 +188,7 @@
 #define IF(sensor_id) 
 #define IFNOT(sensor_id)
 #define IFRANDOM(percent) 
+#define IFRESERVE(block) 
 #define INVERT_DIRECTION 
 #define JOIN 
 #define LATCH(sensor_id) 

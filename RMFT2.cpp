@@ -316,6 +316,7 @@ bool RMFT2::skipIfBlock() {
       case OPCODE_IF:
       case OPCODE_IFNOT:
       case OPCODE_IFRANDOM:
+      case OPCODE_IFRESERVE:
            nest++;
            break;
       case OPCODE_ENDIF:
@@ -454,7 +455,12 @@ void RMFT2::loop2() {
     case OPCODE_IFRANDOM: // do block on random percentage
       if (random(100)>=operand) if (!skipIfBlock()) return;
       break;
-    
+   
+    case OPCODE_IFRESERVE: // do block if we successfully RERSERVE
+      if (!getFlag(operand,SECTION_FLAG)) setFlag(operand,SECTION_FLAG);
+      else if (!skipIfBlock()) return;
+      break;
+      
     case OPCODE_ENDIF:
       break;
     
