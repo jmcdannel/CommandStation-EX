@@ -66,10 +66,9 @@ byte RMFT2::flags[MAX_FLAGS];
       VPIN red=GET_OPERAND(0);
       VPIN amber=GET_OPERAND(1);
       VPIN green=GET_OPERAND(2);
-      // Caution: IOdevice is inverted logic
-      IODevice::write(red,LOW);
-      if (amber) IODevice::write(amber,HIGH);
-      IODevice::write(green,HIGH);
+      IODevice::write(red,true);
+      if (amber) IODevice::write(amber,false);
+      IODevice::write(green,false);
       continue;
      }
      
@@ -298,7 +297,7 @@ void RMFT2::driveLoco(byte speed) {
 bool RMFT2::readSensor(int16_t sensorId) {
   VPIN vpin=abs(sensorId);
   if (getFlag(vpin,LATCH_FLAG)) return true; // latched on
-  bool s= (!IODevice::read(vpin)) ^ (sensorId<0);
+  bool s= IODevice::read(vpin) ^ (sensorId<0);
   if (s && diag) DIAG(F("EXRAIL Sensor %d hit"),sensorId);
   return s;
 }
@@ -420,11 +419,11 @@ void RMFT2::loop2() {
       break;
 
     case OPCODE_SET:
-      IODevice::write(operand,LOW);
+      IODevice::write(operand,true);
       break;
   
     case OPCODE_RESET:
-      IODevice::write(operand,HIGH);
+      IODevice::write(operand,false);
       break;
     
     case OPCODE_PAUSE:
@@ -627,9 +626,9 @@ void RMFT2::kill(const FSH * reason, int operand) {
      if (redpin!=id)continue;
      byte amberpin=GET_OPERAND(2);
      byte greenpin=GET_OPERAND(3);
-     IODevice::write(redpin,!red);
-     if (amberpin) IODevice::write(amberpin,!amber);
-     if (greenpin) IODevice::write(amberpin,!green);
+     IODevice::write(redpin,red);
+     if (amberpin) IODevice::write(amberpin,amber);
+     if (greenpin) IODevice::write(amberpin,green);
      return;
    }
   } 
