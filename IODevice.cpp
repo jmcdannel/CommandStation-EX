@@ -304,7 +304,7 @@ bool IODevice::hasCallback(VPIN vpin) {
 }
 bool IODevice::read(VPIN vpin) { 
   pinMode(vpin, INPUT_PULLUP);
-  return digitalRead(vpin);
+  return !digitalRead(vpin);  // Return inverted state (5v=0, 0v=1)
 }
 void IODevice::loop() {}
 void IODevice::DumpAll() {
@@ -401,9 +401,9 @@ int ArduinoPins::_read(VPIN vpin) {
       pinMode(pin, INPUT);
   }
   #if defined(USE_FAST_IO)
-  int value = fastReadDigital(pin);
+  int value = !fastReadDigital(pin); // Invert (5v=0, 0v=1)
   #else
-  int value = digitalRead(pin);
+  int value = !digitalRead(pin); // Invert (5v=0, 0v=1)
   #endif
 
   #ifdef DIAG_IO
