@@ -252,16 +252,16 @@ private:
   // Constructor
   PCA9685(VPIN vpin, int nPins, uint8_t I2CAddress);
   // Device-specific initialisation
-  void _begin();
-  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]);
+  void _begin() override;
+  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) override;
   // Device-specific write functions.
-  void _write(VPIN vpin, int value);
-  void _writeAnalogue(VPIN vpin, int value, int profile);
-  bool _isActive(VPIN vpin);
-  void _loop(unsigned long currentMicros);
+  void _write(VPIN vpin, int value) override;
+  void _writeAnalogue(VPIN vpin, int value, int profile) override;
+  bool _isActive(VPIN vpin) override;
+  void _loop(unsigned long currentMicros) override;
   void updatePosition(uint8_t pin);
   void writeDevice(uint8_t pin, int value);
-  void _display();
+  void _display() override;
 
   uint8_t _I2CAddress; // 0x40-0x43 possible
 
@@ -306,8 +306,8 @@ private:
   // Constructor
   DCCAccessoryDecoder(VPIN firstVpin, int nPins, int DCCAddress, int DCCSubaddress);
   // Device-specific write function.
-  void _write(VPIN vpin, int value);
-  void _display();
+  void _write(VPIN vpin, int value) override;
+  void _display() override;
   int _packedAddress;
 };
 
@@ -328,12 +328,12 @@ public:
 
 private:
   // Device-specific pin configuration
-  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]);
+  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) override;
   // Device-specific write function.
-  void _write(VPIN vpin, int value);
+  void _write(VPIN vpin, int value) override;
   // Device-specific read function.
-  int _read(VPIN vpin);
-  void _display();
+  int _read(VPIN vpin) override;
+  void _display() override;
 
   void fastWriteDigital(uint8_t pin, uint8_t value);
   bool fastReadDigital(uint8_t pin);

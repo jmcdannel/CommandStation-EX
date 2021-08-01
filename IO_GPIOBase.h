@@ -36,15 +36,15 @@ protected:
   // Constructor
   GPIOBase(FSH *deviceName, VPIN firstVpin, uint8_t nPins, uint8_t I2CAddress, int interruptPin);
   // Device-specific initialisation
-  void _begin();
+  void _begin() override;
   // Device-specific pin configuration function.  
-  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]);
+  bool _configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) override;
   // Pin write function.
-  void _write(VPIN vpin, int value);
+  void _write(VPIN vpin, int value) override;
   // Pin read function.
-  int _read(VPIN vpin);
-  void _display();
-  void _loop(unsigned long currentMicros);
+  int _read(VPIN vpin) override;
+  void _display() override;
+  void _loop(unsigned long currentMicros) override;
 
   // Data fields
   uint8_t _I2CAddress; 
@@ -53,7 +53,6 @@ protected:
   T _portOutputState;
   T _portMode;
   T _portPullup;
-  T _portInvert;  // Inversion mask for inputs
   // Interval between refreshes of each input port
   static const int _portTickTime = 4000;
   unsigned long _lastLoopEntry = 0;
@@ -98,7 +97,6 @@ GPIOBase<T>::GPIOBase(FSH *deviceName, VPIN firstVpin, uint8_t nPins, uint8_t I2
     _portMode = 0;  // default to input mode
     _portPullup = -1; // default to pullup enabled
     _portInputState = 0; 
-    _portInvert = 0;  // default to no invert
   }
   _deviceState = DEVSTATE_NORMAL;
   _lastLoopEntry = micros();
@@ -113,7 +111,7 @@ void GPIOBase<T>::_begin() {}
 template <class T>
 bool GPIOBase<T>::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCount, int params[]) {
   if (configType != CONFIGURE_INPUT) return false;
-  if (paramCount == 0 || paramCount > 2) return false;
+  if (paramCount == 0 || paramCount > 1) return false;
   bool pullup = params[0];
   int pin = vpin - _firstVpin;
   #ifdef DIAG_IO
@@ -129,14 +127,6 @@ bool GPIOBase<T>::_configure(VPIN vpin, ConfigTypeEnum configType, int paramCoun
   _writePullups();
   // Re-read port following change
   _readGpioPort();
-
-  if (paramCount == 2) {
-    bool invert = params[1];
-    if (invert) 
-      _portInvert |= mask;
-    else
-      _portInvert &= ~mask;
-  }
 
   return true;
 }
@@ -225,7 +215,7 @@ int GPIOBase<T>::_read(VPIN vpin) {
     DIAG(F("%S I2C:x%x PortStates:%x"), _deviceName, _I2CAddress, _portInputState);
     #endif
   }
-  return ((_portInputState ^ _portInvert) & mask) ? 1 : 0;
+  return (_portInputState & mask) ? 0 : 1;  // Invert state (5v=0, 0v=1)
 }
 
 #endif

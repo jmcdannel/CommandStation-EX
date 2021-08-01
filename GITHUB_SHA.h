@@ -1,1 +1,1 @@
-#define GITHUB_SHA "1941402"
+#define GITHUB_SHA "50fcbc0"

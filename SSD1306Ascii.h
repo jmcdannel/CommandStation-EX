@@ -1,6 +1,8 @@
 /* Based on Arduino SSD1306Ascii Library, Copyright (C) 2015 by William Greiman
  * Modifications (C) 2021 Neil McKechnie
  *
+ *  This file is part of CommandStation-EX
+ *
  * This Library is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -56,21 +58,23 @@ class SSD1306AsciiWire : public LCDDisplay {
   void begin(const DevType* dev, uint8_t i2cAddr);
 
   // Clear the display and set the cursor to (0, 0).
-  void clearNative();
+  void clearNative() override;
 
   // Set cursor to start of specified text line
-  void setRowNative(byte line);
+  void setRowNative(byte line) override;
 
   // Initialize the display controller.
   void init(const DevType* dev);
   
   // Write one character to OLED
-  size_t writeNative(uint8_t c);
+  size_t writeNative(uint8_t c) override;
 
   // Display characteristics / initialisation
   static const DevType FLASH Adafruit128x32;
   static const DevType FLASH Adafruit128x64;
   static const DevType FLASH SH1106_132x64;
+
+  bool isBusy() override { return requestBlock.isBusy(); }
 
  private:
   // Cursor column.
@@ -95,6 +99,7 @@ class SSD1306AsciiWire : public LCDDisplay {
 
   uint8_t m_i2cAddr;
 
+  I2CRB requestBlock;
   uint8_t outputBuffer[fontWidth+letterSpacing+1];
 
   static const uint8_t blankPixels[];

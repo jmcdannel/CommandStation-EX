@@ -45,20 +45,20 @@ private:
     _setupDevice();
   }
 
-  void _writeGpioPort() {
+  void _writeGpioPort() override {
     I2CManager.write(_I2CAddress, 3, REG_GPIOA, _portOutputState, _portOutputState>>8);
   }
-  void _writePullups() {
+  void _writePullups() override {
     I2CManager.write(_I2CAddress, 3, REG_GPPUA, _portPullup, _portPullup>>8);  
   }
-  void _writePortModes() {
+  void _writePortModes() override {
     // Write 1 to IODIR for pins that are inputs, 0 for outputs (i.e. _portMode inverted)
     I2CManager.write(_I2CAddress, 3, REG_IODIRA, ~_portMode, (~_portMode)>>8);
     // Enable interrupt for those pins which are inputs (_portMode=0)
     I2CManager.write(_I2CAddress, 3, REG_INTCONA, 0x00, 0x00);
     I2CManager.write(_I2CAddress, 3, REG_GPINTENA, ~_portMode, (~_portMode)>>8);
   }
-  void _readGpioPort(bool immediate) {
+  void _readGpioPort(bool immediate) override {
     if (immediate) {
       uint8_t buffer[2];
       I2CManager.read(_I2CAddress, buffer, 2, 1, REG_GPIOA);
@@ -71,14 +71,14 @@ private:
     }
   }
   // This function is invoked when an I/O operation on the requestBlock completes.
-  void _processCompletion(uint8_t status) {
+  void _processCompletion(uint8_t status) override {
     if (status == I2C_STATUS_OK) 
       _portInputState = ((uint16_t)inputBuffer[1]<<8) | inputBuffer[0];
     else  
       _portInputState = 0xffff;
   }
 
-  void _setupDevice() {
+  void _setupDevice() override {
     // IOCON is set MIRROR=1, ODR=1 (open drain shared interrupt pin)
     I2CManager.write(_I2CAddress, 2, REG_IOCON, 0x44);
     _writePortModes();

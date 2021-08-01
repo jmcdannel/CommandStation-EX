@@ -27,11 +27,11 @@ public:
   IO_ExampleSerial(VPIN firstVpin, int nPins, HardwareSerial *serial, unsigned long baud);
   static void create(VPIN firstVpin, int nPins, HardwareSerial *serial, unsigned long baud);  
 
-  void _begin();
-  void _loop(unsigned long currentMicros);
-  void _write(VPIN vpin, int value);
-  int _read(VPIN vpin);
-  void _display();
+  void _begin() override;
+  void _loop(unsigned long currentMicros) override;
+  void _write(VPIN vpin, int value) override;
+  int _read(VPIN vpin) override;
+  void _display() override;
 
 private:
   HardwareSerial *_serial;

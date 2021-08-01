@@ -123,9 +123,9 @@ void Sensor::checkAll(Print *stream){
       pollSignalPhase = true;
 #endif
 
-    // Where the sensor is attached to a pin, read pin status and invert.  For sources such as LCN,
+    // Where the sensor is attached to a pin, read pin status.  For sources such as LCN,
     // which don't have an input pin to read, the LCN class calls setState() to update inputState when
-    // a message is received.
+    // a message is received.  The IODevice::read() call returns 1 for active pins (0v) and 0 for inactive (5v).
     // Also, on HAL drivers that support change notifications, the driver calls the notification callback
     // routine when an input signal change is detected, and this updates the inputState directly,
     // so these inputs don't need to be polled here.
@@ -133,7 +133,7 @@ void Sensor::checkAll(Print *stream){
 #ifdef USE_NOTIFY
     if (pollSignalPhase)
 #endif
-      if (pin!=VPIN_NONE) readingSensor->inputState = !IODevice::read(pin);
+      if (pin!=VPIN_NONE) readingSensor->inputState = IODevice::read(pin);
 
     // Check if changed since last time, and process changes.
     if (readingSensor->inputState == readingSensor->active) {
@@ -190,7 +190,7 @@ void Sensor::inputChangeCallback(VPIN vpin, int state) {
     if (tt->data.pin == vpin) break;
   }
   if (tt != NULL) { // Sensor found
-    tt->inputState = (state == 0); 
+    tt->inputState = (state != 0); 
   }
   // Call next registered callback function
   if (nextInputChangeCallback) nextInputChangeCallback(vpin, state);
@@ -312,7 +312,7 @@ void Sensor::load(){
   struct SensorData data;
   Sensor *tt;
 
-  for(int i=0;i<EEStore::eeStore->data.nSensors;i++){
+  for(uint16_t i=0;i<EEStore::eeStore->data.nSensors;i++){
     EEPROM.get(EEStore::pointer(),data);
     tt=create(data.snum, data.pin, data.pullUp);
     EEStore::advance(sizeof(tt->data));

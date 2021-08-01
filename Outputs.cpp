@@ -97,7 +97,7 @@ void Output::printAll(Print *stream){
 ///////////////////////////////////////////////////////////////////////////////
 // Object method to activate / deactivate the Output state.
 
-void  Output::activate(int s){
+void  Output::activate(uint16_t s){
   s = (s>0);  // Make 0 or 1
   data.active = s;                     // if s>0, set status to active, else inactive
   // set state of output pin to HIGH or LOW depending on whether bit zero of iFlag is set to 0 (ACTIVE=HIGH) or 1 (ACTIVE=LOW)
@@ -112,7 +112,7 @@ void  Output::activate(int s){
 // Static function to locate Output object specified by ID 'n'.
 //   Return NULL if not found.
 
-Output* Output::get(int n){
+Output* Output::get(uint16_t n){
   Output *tt;
   for(tt=firstOutput;tt!=NULL && tt->data.id!=n;tt=tt->nextOutput);
   return(tt);
@@ -122,7 +122,7 @@ Output* Output::get(int n){
 // Static function to delete Output object specified by ID 'n'.
 //   Return false if not found.
 
-bool Output::remove(int n){
+bool Output::remove(uint16_t n){
   Output *tt,*pp=NULL;
 
   for(tt=firstOutput;tt!=NULL && tt->data.id!=n;pp=tt,tt=tt->nextOutput);
@@ -146,7 +146,7 @@ void Output::load(){
   struct OutputData data;
   Output *tt;
 
-  for(int i=0;i<EEStore::eeStore->data.nOutputs;i++){
+  for(uint16_t i=0;i<EEStore::eeStore->data.nOutputs;i++){
     EEPROM.get(EEStore::pointer(),data);
     // Create new object, set current state to default or to saved state from eeprom.
     tt=create(data.id, data.pin, data.flags, data.setDefault ? data.defaultValue : data.active);
@@ -178,7 +178,7 @@ void Output::store(){
 ///////////////////////////////////////////////////////////////////////////////
 // Static function to create an Output object
 
-Output *Output::create(int id, VPIN pin, int iFlag, int v){
+Output *Output::create(uint16_t id, VPIN pin, int iFlag, int v){
   Output *tt;
 
   if (pin > VPIN_MAX) return NULL;

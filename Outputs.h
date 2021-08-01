@@ -37,25 +37,26 @@ struct OutputData {
       unsigned int active : 1;
     };
   };
-  int id;
+  uint16_t id;
   VPIN pin; 
 };
 
+
 class Output{
 public:
-  void activate(int s);
+  void activate(uint16_t s);
   bool isActive();
-  static Output* get(int);
-  static bool remove(int);
+  static Output* get(uint16_t);
+  static bool remove(uint16_t);
   static void load();
   static void store();
-  static Output *create(int, VPIN, int, int=0);
+  static Output *create(uint16_t, VPIN, int, int=0);
   static Output *firstOutput;
   struct OutputData data;
   Output *nextOutput;
   static void printAll(Print *);
 private:
-  int num;  // EEPROM address of oStatus in OutputData struct, or zero if not stored.
+  uint16_t num;  // EEPROM address of oStatus in OutputData struct, or zero if not stored.
   
 }; // Output
   
