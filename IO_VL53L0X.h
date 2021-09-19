@@ -134,7 +134,7 @@ protected:
       _entryCount = 3;
     } else {
       _entryCount = 0;
-    } 
+    }
    }
   void _loop(unsigned long currentMicros) override {
     if (_initialising) {
