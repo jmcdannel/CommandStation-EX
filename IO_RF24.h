@@ -22,38 +22,45 @@
  *   Channel: 76
  *   Bit rate: 2MHz
  *
- * One station (normally the CS) is configured as Master (node 0), and
- * the others as slaves (nodes 1-255).
+ * Each node on the network is configured with a node number in the range 0-254.
+ * The remoting configuration defines, for each pin to be available remotely,
+ * the node number and the VPIN number on that node. The configuration must
+ * match in all nodes, since it is used by the sending node to identify the node
+ * and VPIN to which a write command is to be sent, and the VPIN number for a
+ * sensor/input, and on the receiving node to identify the node from which a
+ * sensor/input value is being sourced.
  *
- * The master sends regular updates to the slaves, one at a time, containing the
- * latest values of the sensors distributed around the network. Slave nodes send
- * their regular updates to the master as 'ack payloads', i.e. in response to
- * receiving a message from the master. This strategy should reduce collisions
- * (where two nodes attempt to transmit at the same time, rendering both
- * messages unintelligible). It also minimises the time taken in the slave
- * microcontroller to write messages.  Once the RF24 has been loaded with the
- * 'ack payload', it autonomously takes care of receiving the master message,
- * changing into transmit mode, sending the 'ack' and its payload, and changing
- * back into receive mode, with no intervention from the microcontroller.
- * When the operation has completed, then the received message can be read from
- * the RF24's input buffers.
+ * The node number is also used as the first byte of the RF24's 5-byte address
+ * field. Number 255 is treated as a multicast address.  All stations listen on
+ * their own address and on the multicast address.
+ *
+ * All nodes send regular multicast packets containing the latest values of the
+ * sensors as they know them.  On receipt of such a packet, each node extracts
+ * the states of the sensors which are sourced by the originating node, and
+ * updates the values in its own local data.  Thus, each node has a copy of the
+ * states of all digital input pin values that are defined in the remoting
+ * configuration.  Multicasts are sent frequently, so if one is missed
+ * then, like a London bus, another will be along shortly.
  *
  * Commands (originating from write() or writeAnalogue() calls) are sent
- * immediately, directly from the originating node to the target node.
+ * immediately, directly from the originating node to the target node.  This
+ * is done with acknowlegements enabled to maximise the probability of
+ * successful delivery.
  *
- * The node number is part of the 5-byte address used for sending/receiving
- * data.  A node listens on its own address for messages sent directly from the
- * master or from another slave.  When a packet is sent it is addressed with the
- * node number of the target node.  Thus, up to 255 slave devices may be
- * addressed in addition to the master device.
+ * The RF24 device receives and acknowledges data packets autonomously.
+ * Therefore, this driver just needs to detect when a packet is received and
+ * read and process its contents.  The time to read the packet is under 200us
+ * typically.
  *
- * The time taken to send or to receive a message in the Arduino has been
- * measured and is typically below 100us, except where the output buffers are
- * full.  In this case the program has to wait for an earlier packet to be
- * transmitted and acknowledged before the current packet can be written to the
- * device.  The regular message traffic is spaced such that this will rarely
- * happen.
- * 
+ * The RF24 is also capable of autonomously sending packets, processing
+ * acknowledgements, and generating retries.  The driver writes the packet to
+ * the device and then waits for notification of completion (success, or retries
+ * exceeded) through the device's registers.  Similarly, the time to write a
+ * packet is under 200us and, if we don't wait for the completion, we can allow
+ * the processor to do other things while the transmission is in progress.
+ * A write with ack can complete in under 600us, plus the time of turning the
+ * receiver off and on.
+ *
  */
 
 #ifndef IO_RF24_H
@@ -129,21 +136,21 @@ protected:
       _radio.setDataRate(RF24_2MBPS);
       _radio.setPALevel(RF24_PA_LOW);
       _radio.setChannel(76);
+      _radio.enableDynamicPayloads();  // variable length packets
       _radio.setAutoAck(true);
-      _radio.enableAckPayload();
-      _radio.enableDynamicAck();
-      _radio.enableDynamicPayloads();
-      _radio.setRetries(1, 1);  // Retry time=1*250+250us=500us, count=1.
+      _radio.enableDynamicAck(); // required for multicast to work
+      _radio.setRetries(1, 5);  // Retry time=1*250+250us=500us, count=5.
 
+      // Send and receive on address 255
+      _address[0] = 255;
       _radio.openWritingPipe(_address);
-      // Set to listen on the address coresponding to this node number
-      _address[0] = _thisNode;
+      // Set to listen on the address 255
+      _address[0] = 255;
       _radio.openReadingPipe(1, _address);
-      // if (_thisNode != 0) {
-      //   // Set also to listen for messages sent to master
-      //   _address[0] = 0;
-      //   _radio.openReadingPipe(2, _address);
-      // }
+      // Also allow receives on own node address
+      _address[0] = _thisNode;
+      _radio.openReadingPipe(2, _address);
+      _radio.startListening();
 
       _display();
       _deviceState = DEVSTATE_NORMAL;
@@ -213,26 +220,17 @@ protected:
   void _loop(unsigned long currentMicros) override {
     if (_deviceState == DEVSTATE_FAILED) return;
 
-    // Send out data updates once every 5ms
-    if (currentMicros - _lastExecutionTime > 5 * 1000UL) {
-      if (_thisNode == 0) {
-        // Master - Send sensor updates to next slave.
-        _currentSendNode++;
-        if (_currentSendNode > _maxNode) 
-          _currentSendNode = 1;
-        if (_currentSendNode <= _maxNode) 
-          sendSensorUpdates();
-      } else {
-        // Slave, collect sensor updates ready for sending
-        sendSensorUpdates();
-      }
-      _lastExecutionTime = currentMicros;
-
-    }
-
     // Check for incoming data (including ack payloads)
     if (_radio.available(NULL))
       processReceivedData();
+
+    // Send out data update broadcasts once every 100ms
+    if (currentMicros - _lastExecutionTime > (100 * + _thisNode % 20) * 1000UL ) {
+      // Broadcast updates to all other nodes
+      sendSensorUpdates();
+      _lastExecutionTime = currentMicros;
+
+    }
 
   }
 
@@ -242,6 +240,10 @@ protected:
   }
 
 private:
+  // TODO: Reduce number of regular transmissions.  For example, when one of the values sourced
+  // on this node changes, then send a defined number of transmissions (e.g. 3), but otherwise
+  // send them once a second or so.
+
   void sendSensorUpdates() { 
     // On master and on slave, send pin states to other nodes
     outBuffer[0] = _thisNode;  // Originating node
@@ -280,16 +282,9 @@ private:
     }
 
     if (_thisNode == 0) {  // Master
-      // Set up to send to the node currently being addressed, and to receive
-      // the acknowledgements.
-      sendCommand(_currentSendNode, outBuffer, byteIndex);
-      //DIAG(F("Sent %d bytes to node %d"), byteIndex, _currentSendNode);
-    } else { // Slave
-      // Put in queue as ack payload, after first flushing any existing payload
-      // that hasn't been sent.
-      //_radio.flush_tx();
-      _radio.writeAckPayload(1, outBuffer, byteIndex);
-      //DIAG(F("Queued %d bytes"), byteIndex);
+      // Set up to broadcast updates
+      sendCommand(255, outBuffer, byteIndex);
+      //DIAG(F("Sent %d bytes"), byteIndex);
     }
   }
 
@@ -345,10 +340,9 @@ private:
           VPIN vpin = makeWord(inBuffer[2], inBuffer[3]);
           int currentPin = vpin-_firstVpin;
           for (uint16_t bitIndex = 4*8; (bitIndex < size*8) && (currentPin < _nPins); bitIndex++) {
-            // Process incoming value if it's come to the master from the pin source node,
-            // or if it's come from the master and this is a slave.
+            // Process incoming value if it's come from the pin source node
             uint8_t pinSource = _pinDefs[currentPin].node;
-            if ((sendingNode = pinSource && _thisNode == 0) || (sendingNode == 0 && _thisNode != 0)) {
+            if (sendingNode == pinSource) {
               uint8_t bitMask = 1 << (bitIndex % 8);
               uint8_t byteIndex = bitIndex / 8;
               _pinValues[currentPin] = (inBuffer[byteIndex] & bitMask) ? 1 : 0;
@@ -363,12 +357,30 @@ private:
     }
   }
 
-
-  // Wrapper functions for RF24 send functions
+  // Wrapper functions for RF24 send functions.  If node=255, then
+  //  the packet is to be sent as a multicast without acknowledgements.
+  //  The multicast message takes ~400us. A further 260us is required to turn
+  //  the receiver off and on for the transmission, totalling 660us.
+  //  If the node is not 255, then the packet will be sent directly to the
+  //  addressed node, with acknowledgement requested.  If no acknowledgement is
+  //  received, then the device will retry up to the defined maximum number of
+  //  retries.  This will take longer than a multicast.  For example, with
+  //  setRetries(1,3) the timeout is 500us and a maximum of 3 retries are
+  //  carried out, so the operation will take as much as 2.26 milliseconds if
+  //  the node in question is not responding, and as little as 890us if the 
+  //  ack is received immediately (including turning receiver on/off).
+  //
+  // TODO: Separate writeFast from txStandBy to avoid blocking during transmission
+  //  and during retries.
+  //
   bool sendCommand(uint8_t node, uint8_t *buffer, uint8_t len) {
     _address[0] = node;
     _radio.openWritingPipe(_address);
-    bool ok = _radio.writeBlocking(buffer, len, 2); // 2ms timeout
+    _radio.stopListening();
+    // Multicast if destination node is 255
+    bool ok = _radio.writeFast(buffer, len, (node==255)); 
+    _radio.txStandBy();
+    _radio.startListening();
     return ok;
   }
 
