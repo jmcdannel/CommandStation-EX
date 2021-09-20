@@ -116,13 +116,9 @@ protected:
 
   // _loop function - read HC-SR04 once every 50 milliseconds.
   void _loop(unsigned long currentMicros) override {
-    if (currentMicros - _lastExecutionTime > 50000UL) {
-      _lastExecutionTime = currentMicros;
-
-      read_HCSR04device();
-      // Delay next loop entry until 50ms have elapsed.
-      //delayUntil(currentMicros + 50000UL);
-    }
+    read_HCSR04device();
+    // Delay next loop entry until 50ms have elapsed.
+    delayUntil(currentMicros + 50000UL);
   }
 
   void _display() override {

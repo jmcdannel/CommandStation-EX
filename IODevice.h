@@ -163,7 +163,14 @@ public:
   
 protected:
   
-  // Method to perform initialisation of the device (optionally implemented within device class)
+  // Constructor
+  IODevice(VPIN firstVpin=0, int nPins=0) {
+    _firstVpin = firstVpin;
+    _nPins = nPins;
+    _nextEntryTime = 0;
+  }
+
+ // Method to perform initialisation of the device (optionally implemented within device class)
   virtual void _begin() {}
 
   // Method to configure device (optionally implemented within device class)
@@ -178,8 +185,8 @@ protected:
   };
 
   // Method to write an 'analogue' value (optionally implemented within device class)
-  virtual void _writeAnalogue(VPIN vpin, int value, uint8_t profile, uint16_t duration) {
-    (void)vpin; (void)value; (void) profile; (void)duration;
+  virtual void _writeAnalogue(VPIN vpin, int value, uint8_t param1, uint16_t param2) {
+    (void)vpin; (void)value; (void) param1; (void)param2;
   };
 
   // Function called to check whether callback notification is supported by this pin.
@@ -275,7 +282,7 @@ private:
   // Device-specific write functions.
   void _write(VPIN vpin, int value) override;
   void _writeAnalogue(VPIN vpin, int value, uint8_t profile, uint16_t duration) override;
-  int _read(VPIN vpin) override; // returns the busy status of the device
+  int _read(VPIN vpin) override; // returns the digital state or busy status of the device
   void _loop(unsigned long currentMicros) override;
   void updatePosition(uint8_t pin);
   void writeDevice(uint8_t pin, int value);
