@@ -218,7 +218,6 @@ protected:
   // _loop function - check for, and process, received data from RF24, and send any
   // updates that are due.
   void _loop(unsigned long currentMicros) override {
-    if (_deviceState == DEVSTATE_FAILED) return;
 
     // Check for incoming data (including ack payloads)
     if (_radio.available(NULL))
@@ -229,9 +228,7 @@ protected:
       // Broadcast updates to all other nodes
       sendSensorUpdates();
       _lastExecutionTime = currentMicros;
-
     }
-
   }
 
   void _display() override {
