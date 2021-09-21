@@ -63,9 +63,10 @@
 
 class DFPlayer : public IODevice {
 private: 
-  HardwareSerial *_serial;
-  bool _playing = false;
-  uint8_t _inputIndex = 0;
+  HardwareSerial *_serial;  // Reference to serial port connected to DFPlayer
+  bool _playing = false;  // Flag whether player is playing or not.
+  uint8_t _inputIndex = 0; // Index of message bytes
+  uint8_t _receivedCommandByte = 0; // Value of byte 3 in last message received
   unsigned long _commandSendTime; // Allows timeout processing
 
 public:
@@ -93,16 +94,18 @@ protected:
 
   void _loop(unsigned long currentMicros) override {
     // Check for incoming data on _serial, and update busy flag accordingly.
-    // Expected message is in the form "7F FF 06 3D xx xx xx xx xx EF"
+    // Expected messages are in the form:
+    //  "7E FF 06 3D xx xx xx xx xx EF" = end of play
+    //  "7E FF 06 42 xx xx 00 xx xx EF" = not busy
+    //  "7E FF 06 42 xx xx 01 xx xx EF" = busy
     while (_serial->available()) {
       int c = _serial->read();
+      //DIAG(F("CHAR(%d):%x"), _inputIndex, c);
       if (c == 0x7E) 
         _inputIndex = 1;
-      else if ((c==0xFF && _inputIndex==1)
-            || (c==0x3D && _inputIndex==3) 
-            || (_inputIndex >=4 && _inputIndex <= 8))
+      else if (c==0xFF && _inputIndex==1)
         _inputIndex++;
-      else if (c==0x06 && _inputIndex==2) { 
+      else if (c==0x06 && _inputIndex==2) {
         // Valid message prefix, so consider the device online
         if (_deviceState==DEVSTATE_INITIALISING) {
           _deviceState = DEVSTATE_NORMAL;
@@ -111,17 +114,35 @@ protected:
           #endif
         }
         _inputIndex++;
-      } else if (c==0xEF && _inputIndex==9) {
-        // End of play
-        if (_playing) {
-          #ifdef DIAG_IO
-          DIAG(F("DFPlayer: Finished"));
-          #endif
-          _playing = false;
+      } else if (_inputIndex == 3) {
+        _receivedCommandByte = c;
+        if (_receivedCommandByte == 0x3D) {
+          // End of play
+          if (_playing) {
+            #ifdef DIAG_IO
+            DIAG(F("DFPlayer: Finished"));
+            #endif
+            _playing = false;
+          } 
         }
+        _inputIndex++;
+      } else if (_inputIndex == 6) {
+        // status byte
+        if (_receivedCommandByte == 0x42) {
+          if (c == 0x00) 
+            _playing = false;
+          else
+            _playing = true;
+          #ifdef DIAG_IO
+          DIAG(F("DFPlayer %S playing"), _playing ? F("currently") : F("not"));
+          #endif
+        } 
+        _inputIndex++;
+      } else if (_inputIndex < 9) 
+        _inputIndex++;
+      else
+        // Wait for next start of packet.
         _inputIndex = 0;
-      } else 
-        _inputIndex = 0;  // Unrecognised character sequence, start again!
     }
     // Check if the initial prompt to device has timed out.  Allow 1 second
     if (_deviceState == DEVSTATE_INITIALISING && currentMicros - _commandSendTime > 1000000UL) {
