@@ -97,10 +97,10 @@ private:
           #endif
         }
       }
-      if (status != I2C_STATUS_OK) {
-        DIAG(F("ADS111x I2C:x%d Error:%d"), _i2cAddress, status);
-        _deviceState = DEVSTATE_FAILED;
-      }
+    }
+    if (status != I2C_STATUS_OK) {
+      DIAG(F("ADS111x I2C:x%d Error:%d %S"), _i2cAddress, status, I2CManager.getErrorMessage(status));
+      _deviceState = DEVSTATE_FAILED;
     }
     // Move to next pin
     if (++_currentPin >= _nPins) _currentPin = 0;
@@ -122,7 +122,8 @@ private:
   }
   
   void _display() override {
-    DIAG(F("ADS111x I2C:x%x Configured on Vpins:%d-%d"), _i2cAddress, _firstVpin, _firstVpin+_nPins-1);
+    DIAG(F("ADS111x I2C:x%x Configured on Vpins:%d-%d %S"), _i2cAddress, _firstVpin, _firstVpin+_nPins-1,
+      _deviceState == DEVSTATE_FAILED ? F("OFFLINE") : F(""));
   }
 
   // ADC conversion rate is 250SPS, or 4ms per conversion.  Set the period between updates to 10ms. 
@@ -137,7 +138,6 @@ private:
   uint8_t _outBuffer[3];
   uint8_t _inBuffer[2];
   uint8_t _currentPin;  // ADC pin currently being scanned
-  unsigned long _lastMicros = 0;
   I2CRB _i2crb;
 };
 

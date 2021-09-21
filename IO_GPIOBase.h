@@ -59,7 +59,6 @@ protected:
   T _portPullup;
   // Interval between refreshes of each input port
   static const int _portTickTime = 4000;
-  unsigned long _lastLoopEntry = 0;
 
   // Virtual functions for interfacing with I2C GPIO Device
   virtual void _writeGpioPort() = 0;
@@ -105,10 +104,12 @@ void GPIOBase<T>::_begin() {
     _portMode = 0;  // default to input mode
     _portPullup = -1; // default to pullup enabled
     _portInputState = -1; 
+    _setupDevice();
+    _deviceState = DEVSTATE_NORMAL;
+  } else {
+    DIAG(F("%S I2C:x%x Device not detected"), _deviceName, _I2CAddress);
+    _deviceState = DEVSTATE_FAILED;
   }
-  _setupDevice();
-  _deviceState = DEVSTATE_NORMAL;
-  _lastLoopEntry = micros();
 }
 
 // Configuration parameters for inputs: 

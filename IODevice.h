@@ -309,7 +309,6 @@ private:
   static const byte FLASH _bounceProfile[30];
 
   const unsigned int refreshInterval = 50; // refresh every 50ms
-  unsigned long _lastRefreshTime; // last seen value of micros() count
 
   // structures for setting up non-blocking writes to servo controller
   I2CRB requestBlock;

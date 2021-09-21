@@ -44,7 +44,11 @@
  * all VL53L0X modules are turned off, the driver works through each module in turn by
  * setting XSHUT to HIGH to turn the module on,, then writing the module's desired I2C address.
  * In this way, many VL53L0X modules can be connected to the one I2C bus, each one 
- * using with a distinct I2C address.
+ * using a distinct I2C address.
+ * 
+ * WARNING:  If the device's XSHUT pin is not connected, then it is very prone to noise, 
+ * and the device may even reset when handled.  If you're not using XSHUT, then it's 
+ * best to tie it to +5V.
  * 
  * The driver is configured as follows:
  * 
@@ -98,7 +102,6 @@ private:
   bool _value;
   bool _initialising = true;
   uint8_t _entryCount = 0;
-  unsigned long _lastEntryTime = 0;
   bool _scanInProgress = false;
   // Register addresses
   enum : uint8_t {
@@ -135,7 +138,8 @@ protected:
     } else {
       _entryCount = 0;
     }
-   }
+  }
+
   void _loop(unsigned long currentMicros) override {
     if (_initialising) {
       switch (_entryCount++) {
@@ -158,7 +162,9 @@ protected:
         case 3:
           // After two more loops, check if device has been configured.
           if (I2CManager.exists(_i2cAddress)) {
+            #ifdef DIAG_IO
             _display();
+            #endif
             // Set 2.8V mode
             write_reg(VL53L0X_CONFIG_PAD_SCL_SDA__EXTSUP_HV, 
               read_reg(VL53L0X_CONFIG_PAD_SCL_SDA__EXTSUP_HV) | 0x01);
@@ -172,15 +178,13 @@ protected:
         default:
           break;
       }
-    } else if (_lastEntryTime - currentMicros > 10000UL) {
-      // Service device every 10ms
-      _lastEntryTime = currentMicros;
+    } else {
 
       if (!_scanInProgress) {
         // Not scanning, so initiate a scan
         uint8_t status = write_reg(VL53L0X_REG_SYSRANGE_START, 0x01);
         if (status != I2C_STATUS_OK) {
-          DIAG(F("VL53L0X I2C:x%x Failed, %S"), _i2cAddress, I2CManager.getErrorMessage(status));
+          DIAG(F("VL53L0X I2C:x%x Error:%d %S"), _i2cAddress, status, I2CManager.getErrorMessage(status));
           _deviceState = DEVSTATE_FAILED;
           _value = false;
         } else
@@ -207,8 +211,11 @@ protected:
           _scanInProgress = false;
         }
       }
+      // Next entry in 10 milliseconds.
+      delayUntil(currentMicros + 10000UL);
     }
   }
+
   // For analogue read, first pin returns distance, second pin is signal strength, and third is ambient level.
   int _readAnalogue(VPIN vpin) override {
     int pin = vpin - _firstVpin;
@@ -223,10 +230,12 @@ protected:
         return -1;
     }
   }
+
   // For digital read, return the same value for all pins.
   int _read(VPIN) override {
     return _value;
   }
+
   void _display() override {
     DIAG(F("VL53L0X I2C:x%x Configured on Vpins:%d-%d On:%dmm Off:%dmm %S"),
       _i2cAddress, _firstVpin, _firstVpin+_nPins-1, _onThreshold, _offThreshold,

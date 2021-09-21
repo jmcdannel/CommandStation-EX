@@ -68,8 +68,6 @@ private:
   uint16_t _distance;
   // Active=1/inactive=0 state 
   uint8_t _value = 0;
-  // Time of last loop execution
-  unsigned long _lastExecutionTime;
   // Factor for calculating the distance (cm) from echo time (ms).
   //  Based on a speed of sound of 345 metres/second.
   const uint16_t factor = 58; // ms/cm
@@ -97,7 +95,6 @@ protected:
     pinMode(_trigPin, OUTPUT);
     pinMode(_echoPin, INPUT);
     ArduinoPins::fastWriteDigital(_trigPin, 0);
-    _lastExecutionTime = micros();
 #if defined(DIAG_IO)
     _display();
 #endif

@@ -19,6 +19,7 @@
 #include <Arduino.h>
 #include "RMFT2.h"
 #include "DCC.h"
+#include "DCCWaveform.h"
 #include "DIAG.h"
 #include "WiThrottle.h"
 #include "DCCEXParser.h"
@@ -326,6 +327,10 @@ int RMFT2::locateRouteStart(int16_t _route) {
 void RMFT2::driveLoco(byte speed) {
      if (loco<=0) return;  // Prevent broadcast! 
      if (diag) DIAG(F("EXRAIL drive %d %d %d"),loco,speed,forward^invert);
+     if (DCCWaveform::mainTrack.getPowerMode()==POWERMODE::OFF) {
+        DCCWaveform::mainTrack.setPowerMode(POWERMODE::ON); 
+        Serial.println(F("<p1>")); // tell JMRI
+     }
      DCC::setThrottle(loco,speed, forward^invert);
      speedo=speed;
 }
@@ -477,6 +482,13 @@ void RMFT2::loop2() {
         if (loco) DCC::writeCVByteMain(loco, operand, GET_OPERAND(1));
         break;
 
+    case OPCODE_POWEROFF:
+        DCCWaveform::mainTrack.setPowerMode(POWERMODE::OFF);
+        DCCWaveform::progTrack.setPowerMode(POWERMODE::OFF);
+        DCC::setProgTrackSyncMain(false);       
+        Serial.println(F("<p0>")); // Tell JMRI
+        break;
+
     case OPCODE_RESUME:
          pausingTask=NULL;
          driveLoco(speedo);
@@ -572,7 +584,10 @@ void RMFT2::loop2() {
       return;
       
     case OPCODE_JOIN:
+       DCCWaveform::mainTrack.setPowerMode(POWERMODE::ON); 
+       DCCWaveform::progTrack.setPowerMode(POWERMODE::ON); 
        DCC::setProgTrackSyncMain(true);
+       Serial.println(F("<p1 JOIN>")); // Tell JMRI
        break;
 
     case OPCODE_UNJOIN:
