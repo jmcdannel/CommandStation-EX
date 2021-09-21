@@ -94,7 +94,7 @@ public:
     bool writeFast(const void* buf, uint8_t len);
     bool writeFast(const void* buf, uint8_t len, const bool multicast);
     bool writeBlocking(const void* buf, uint8_t len, uint32_t timeout);
-    bool isWriteFinished( bool &ok);
+    bool isWriteFinished();
     bool txStandBy();
     bool txStandBy(uint32_t timeout, bool startTx = 0);
     bool writeAckPayload(uint8_t pipe, const void* buf, uint8_t len);

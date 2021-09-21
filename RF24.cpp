@@ -843,23 +843,8 @@ bool RF24::rxFifoFull()
 
 /****************************************************************************/
 
-bool RF24::isWriteFinished(bool &ok) {
-  if (get_status() & (_BV(TX_DS) | _BV(MAX_RT))) {
-
-    // Write done, finish and tidy
-    ce(LOW);
-
-    write_register(NRF_STATUS, _BV(RX_DR) | _BV(TX_DS) | _BV(MAX_RT));
-
-    //Max retries exceeded
-    if (status & _BV(MAX_RT)) {
-        flush_tx(); // Only going to be 1 packet in the FIFO at a time using this method, so just flush
-        ok = false;
-    } else
-      ok = true;
-    return true;
-  } else
-    return false;   // Not completed yet.
+bool RF24::isWriteFinished() {
+  return (get_status() & (_BV(TX_DS) | _BV(MAX_RT)));
 }
 
 /****************************************************************************/

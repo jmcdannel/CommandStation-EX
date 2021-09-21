@@ -18,9 +18,11 @@
  */
 
 /*
- * RF24 Mode:
+ * nRF24 default mode of operation:
  *   Channel: 76
  *   Bit rate: 2MHz
+ *   CRC: 16-bit
+ *   Power Level: Low
  *
  * Each node on the network is configured with a node number in the range 0-254.
  * The remoting configuration defines, for each pin to be available remotely,
@@ -30,7 +32,7 @@
  * sensor/input, and on the receiving node to identify the node from which a
  * sensor/input value is being sourced.
  *
- * The node number is also used as the first byte of the RF24's 5-byte address
+ * The node number is also used as the first byte of the nRF24's 5-byte address
  * field. Number 255 is treated as a multicast address.  All stations listen on
  * their own address and on the multicast address.
  *
@@ -47,12 +49,12 @@
  * is done with acknowlegements enabled to maximise the probability of
  * successful delivery.
  *
- * The RF24 device receives and acknowledges data packets autonomously.
+ * The nRF24 device receives and acknowledges data packets autonomously.
  * Therefore, this driver just needs to detect when a packet is received and
  * read and process its contents.  The time to read the packet is under 200us
  * typically.
  *
- * The RF24 is also capable of autonomously sending packets, processing
+ * The nRF24 is also capable of autonomously sending packets, processing
  * acknowledgements, and generating retries.  The driver writes the packet to
  * the device and then waits for notification of completion (success, or retries
  * exceeded) through the device's registers.  Similarly, the time to write a
@@ -61,6 +63,50 @@
  * A write with ack can complete in under 600us, plus the time of turning the
  * receiver off and on.
  *
+ * Usage:
+ *  First declare, for each remote pin in the common area, the mapping onto
+ *  a node and VPIN number.  The array below assumes that the first remote
+ *  VPIN is 4000.  The nRF24L01 device is connected to the standard SPI pins
+ *  plus two others referred to as CE and CSN.  The Arduino pin numbers used
+ *  for these are specified in the create() call.  The REMOTEPINS definition
+ *  should be the same on all nodes in the network.  For outputs, it is the 
+ *  definition in the sending node that dictates which node and VPIN the 
+ *  action is performed on.  For inputs, the value is placed into the
+ *  VPIN location defined in the sending node (that scans the input value), 
+ *  but the value is only accepted in the receiving node if its definition
+ *  shows that the signal originates in the sending node.
+ * 
+ * Example:
+ *  REMOTEPINS rpins[] = {
+ *    {0,20},     //4000  Node 0 GPIO pin 20
+ *    {1,30},     //4001  Node 1 GPIO pin 30
+ *    {1,100},    //4002  Node 1 Servo (PCA9685) pin
+ *    {1,164},    //4003  Node 1 GPIO extender (MCP23017) pin
+ *    {3,164}     //4004  Node 3 GPIO extender (MCP23017) pin
+ *  }
+ *  // FirstVPIN, nPins, thisNode, pinDefs, CEPin, CSNPin
+ *  RF24Net::create(4000, NUMREMOTEPINS(rpins), 0, rpins, 48, 49);
+ * 
+ * This example defines VPINs 4000-4004 which map onto pins on nodes 0, 1 and 3.
+ * The nRF24 device has to be connected to the hardware MISO, MOSI, SCK and CS pins of the 
+ * microcontroller; in addition, the CE and CSN pins on the nRF24 are connected to 
+ * two pins (48 and 49 above).
+ * 
+ * If any of pins 4000-4003 are referenced by turnouts, outputs or sensors, or by EX-RAIL,
+ * then the corresponding remote pin state will be retrieved or updated.  
+ * For example, in EX-RAIL,
+ *    SET(4000) will set pin 20 on Node 0 to +5V.
+ *    AT(4001) will wait until pin 30 on Node 1 activates.
+ *    SERVO(4002,300,0) will reposition the servo on Node 1 PCA9685 module to position 300.
+ * 
+ * The following sensor definition will map onto VPIN 4004, i.e. Node 3 VPIN 164, 
+ * which is the first pin on the first MCP23017:
+ *    <S 1 4004 0>
+ * and when a sensor attached to the pin is activated (pin pulled down to 0V) the following
+ * message will be generated:
+ *    <Q 1>
+ * When the sensor deactivates, the following message will be generated:
+ *    <q 1>
  */
 
 #ifndef IO_RF24_H
@@ -69,7 +115,11 @@
 #include "IODevice.h"
 #include "RF24.h"
 
+// Macros and type for creating the remote pin definitions.
+// The definitions are stored in PROGMEM to reduce RAM requirements.
 typedef struct { uint8_t node; VPIN vpin; } RPIN;
+#define REMOTEPINS  static const RPIN PROGMEM
+#define NUMREMOTEPINS(x) (sizeof(x)/sizeof(RPIN))
 
 class RF24Net : public IODevice {
 
@@ -80,8 +130,8 @@ private:
   const RPIN *_pinDefs;
   // Time of last loop execution
   unsigned long _lastExecutionTime;
-  // Current digital values for remoted pins
-  int *_pinValues;
+  // Current digital values for remoted pins, stored as a bit field
+  uint8_t *_pinValues;
   // Number of the current node (0=master, 1-255=slave)
   uint8_t _thisNode;
   // Maximum slave node number to be polled.  Set this lower to avoid unnecessary poll cycles.
@@ -92,6 +142,10 @@ private:
   static const uint8_t maxPayloadSize = 32;
   // Current node being sent sensor data and polled
   uint8_t _currentSendNode = 0;
+  bool _sendInProgress = false;
+  bool _changesPending;
+  int _nextSendPin = 0;
+  unsigned long _lastMulticastTime;
   
   RF24 _radio;
 
@@ -116,7 +170,7 @@ public:
     _address[2] = 0xEE;
     _address[3] = 0xEE;
     _address[4] = 0xCC;
-    _pinValues = (int *)calloc(nPins, sizeof(int));  // Allocate space for input values.
+    _pinValues = (uint8_t *)calloc((nPins+7)/8, 1);  // Allocate space for input values.
     addDevice(this);
   }
 
@@ -159,21 +213,23 @@ protected:
       DIAG(F("nRF24L01 Failed to initialise"));
       _deviceState = DEVSTATE_FAILED;
     }
-    _lastExecutionTime = micros();
+    _lastMulticastTime = _lastExecutionTime = micros();
   }
 
   // _read function - just return _value (updated in _loop when message received from remote node)
   int _read(VPIN vpin) override {
     int pin = vpin - _firstVpin;
-    return _pinValues[pin];
+    uint8_t mask = 1 << (pin & 7);
+    int byteIndex = pin / 8;
+    return (_pinValues[byteIndex] & mask) ? 1 : 0;
   }
 
   // _write (digital) - send command directly to the appropriate remote node.
   void _write(VPIN vpin, int value) override {
     // Send message
     int pin = vpin - _firstVpin;
-    uint8_t node = _pinDefs[pin].node;
-    VPIN remoteVpin = _pinDefs[pin].vpin;
+    uint8_t node = GETFLASH(&_pinDefs[pin].node);
+    VPIN remoteVpin = GETFLASHW(&_pinDefs[pin].vpin);
     if (node != _thisNode) {
       #ifdef DIAG_IO
       DIAG(F("RF24: write(%d,%d)=>send(%d,\"write(%d,%d)\")"), vpin, value, node, remoteVpin, value);
@@ -193,8 +249,8 @@ protected:
   void _writeAnalogue(VPIN vpin, int value, uint8_t param1, uint16_t param2) override {
     // Send message
     int pin = vpin - _firstVpin;
-    uint8_t node = _pinDefs[pin].node;
-    VPIN remoteVpin = _pinDefs[pin].vpin;
+    uint8_t node = GETFLASH(&_pinDefs[pin].node);
+    VPIN remoteVpin = GETFLASHW(&_pinDefs[pin].vpin);
     if (node != _thisNode) {
       #ifdef DIAG_IO
       DIAG(F("RF24: writeAnalogue(%d,%d,%d,%d)=>send(%d,\"writeAnalogue(%d,%d,...)\")"), 
@@ -223,11 +279,26 @@ protected:
     if (_radio.available(NULL))
       processReceivedData();
 
-    // Send out data update broadcasts once every 100ms
-    if (currentMicros - _lastExecutionTime > (100 * + _thisNode % 20) * 1000UL ) {
-      // Broadcast updates to all other nodes
-      sendSensorUpdates();
-      _lastExecutionTime = currentMicros;
+    // Force a data update broadcast every 500ms irrespective of whether there are
+    // data changes or not.
+    if (currentMicros - _lastMulticastTime > (500 * 1000UL)) 
+      _changesPending = true;
+
+    // Send out data update broadcasts once every 100ms if there are changes
+    if (currentMicros - _lastExecutionTime > (100 * 1000UL)) {
+      // Broadcast updates to all other nodes.  The preparation is done in a number of 
+      // successive calls, and when sendSensorUpdates() returns true it has completed.
+      if (sendSensorUpdates()) {
+        _lastExecutionTime = currentMicros; // Send complete, wait another 100ms
+      }
+    }
+
+    // Check if outstanding writes have completed.  If so, move to Standby-I mode 
+    // and enable the receiver.
+    if (_sendInProgress && _radio.isWriteFinished()) {
+      _sendInProgress = false;
+      _radio.txStandBy();
+      _radio.startListening();
     }
   }
 
@@ -237,52 +308,68 @@ protected:
   }
 
 private:
-  // TODO: Reduce number of regular transmissions.  For example, when one of the values sourced
-  // on this node changes, then send a defined number of transmissions (e.g. 3), but otherwise
-  // send them once a second or so.
+  // Send sensor updates only if one or more locally sourced inputs that
+  // are mapped to remote VPINs have changed state.
+  //
+  bool sendSensorUpdates() { 
+    // This loop is split into multiple loop() entries, so as not to hog
+    // the cpu for too long.  Otherwise it could take over 2700us with 108 remote
+    // pins configured, for example.  So we do just 5 pins per call.  
+    // We could make digital state change notification mandatory, which would 
+    // allow us to remove the loop altogether!
 
-  void sendSensorUpdates() { 
-    // On master and on slave, send pin states to other nodes
-    outBuffer[0] = _thisNode;  // Originating node
-    outBuffer[1] = NET_CMD_VALUEUPDATE;
-    // TODO: Handle more than 8*28=224 sensors! For this, we will need to start a new packet
-    // when the first one is full.
-    uint16_t pinCount = min(_nPins, (maxPayloadSize-4)*8);
-    VPIN remoteVpin = _firstVpin;
-    outBuffer[2] = getMsb(remoteVpin);
-    outBuffer[3] = getLsb(remoteVpin);
-    uint8_t byteIndex = 4;
-    uint8_t byteValue = 0;
-    uint8_t mask = 1;
-    // Send current value if local pin, or stored value if remote pin
-    for (uint16_t pin=0; pin<pinCount; pin++) {
-      if (_pinDefs[pin].node == _thisNode) {
-        // Local pin, read and send current state of input
-        VPIN localVpin = _pinDefs[pin].vpin;
+    // Update the _pinValues bitfield to reflect the current values of local pins.
+    uint8_t count = 5;
+    for (int pin=_nextSendPin; pin<_nPins; pin++) {
+      if (GETFLASH(&_pinDefs[pin].node) == _thisNode) {
+        // Local pin, read and update current state of input
+        VPIN localVpin = GETFLASHW(&_pinDefs[pin].vpin);
         bool state = IODevice::read(localVpin);
-        // Store state in remote values array
-        _pinValues[pin] = state;
-      }
-      // Store from pinValues array in buffer
-      if (_pinValues[pin]) byteValue |= mask;
-      mask <<= 1;
-      if (mask == 0) { // Byte completed?
-        // Store byte value in buffer and reset for next byte.
-        outBuffer[byteIndex++] = byteValue;
-        byteValue = 0;
-        mask = 0;
+        uint16_t byteIndex = pin / 8;
+        uint8_t bitMask = 1 << (pin & 7);
+        uint8_t byteValue = _pinValues[byteIndex];
+        bool oldState = byteValue & bitMask;
+        if (state != oldState) {
+          // Store state in remote values array
+          if (state) 
+            byteValue |= bitMask;
+          else
+            byteValue &= ~bitMask;
+          _pinValues[byteIndex] = byteValue;
+          _changesPending = true;
+          //DIAG(F("RF24 VPIN:%d Val:%d"), _firstVpin+pin, state);
+        }
+        if (--count == 0) {
+          // Done enough checks for this entry, resume on next one.
+          _nextSendPin = pin+1;
+          return false;
+        }
       }
     }
-    if (mask > 1) {
-      // Byte started but not finished, so store that too.
-      outBuffer[byteIndex++] = byteValue;
-    }
+    _nextSendPin = 0;
 
-    if (_thisNode == 0) {  // Master
-      // Set up to broadcast updates
-      sendCommand(255, outBuffer, byteIndex);
-      //DIAG(F("Sent %d bytes"), byteIndex);
+    if (_changesPending) { 
+      // On master and on slave, send pin states to other nodes
+      outBuffer[0] = _thisNode;  // Originating node
+      outBuffer[1] = NET_CMD_VALUEUPDATE;
+      // TODO: Handle more than 8*28=224 sensors! For this, we will need to start a new packet
+      // when the first one is full.  For the time being just send up to 224 values.
+      int byteCount = min((_nPins+7)/8, maxPayloadSize-4);
+      VPIN remoteVpin = _firstVpin;
+      outBuffer[2] = getMsb(remoteVpin);
+      outBuffer[3] = getLsb(remoteVpin);
+
+      // Copy from pinValues array into buffer
+      memcpy(&outBuffer[4], &_pinValues[0], byteCount);
+
+      // Broadcast update
+      sendCommand(255, outBuffer, byteCount + 4);
+    
+      //DIAG(F("Sent %d bytes: %x %x ..."), byteCount, outBuffer[4], outBuffer[5]);
+      _lastMulticastTime = micros();
+      _changesPending = false;
     }
+    return true;  // Done all we need to for this cycle.
   }
 
   // Read next packet from the device's input buffers.  Decode the message, 
@@ -335,17 +422,31 @@ private:
           uint8_t sendingNode = inBuffer[0];
           //DIAG(F("Node %d Rx %x"), sendingNode, inBuffer[4]);
           VPIN vpin = makeWord(inBuffer[2], inBuffer[3]);
-          int currentPin = vpin-_firstVpin;
-          for (uint16_t bitIndex = 4*8; (bitIndex < size*8) && (currentPin < _nPins); bitIndex++) {
-            // Process incoming value if it's come from the pin source node
-            uint8_t pinSource = _pinDefs[currentPin].node;
-            if (sendingNode == pinSource) {
-              uint8_t bitMask = 1 << (bitIndex % 8);
-              uint8_t byteIndex = bitIndex / 8;
-              _pinValues[currentPin] = (inBuffer[byteIndex] & bitMask) ? 1 : 0;
-              //if (pinNode == _thisNode) { // Local pin }
+
+          // Read through the buffer one byte at a time.
+          uint8_t *buffPtr = &inBuffer[4];
+          uint8_t *bitFieldPtr = &_pinValues[(vpin-_firstVpin)/8];
+
+          int currentPin = vpin - _firstVpin;
+          for (int byteNo=0; byteNo<size-4 && currentPin<_nPins; byteNo++) {
+            // Now work through the byte examining each bit.
+            uint8_t byteValue = *buffPtr++;
+            uint8_t bitMask = 1;
+            for (int bitNo=0; bitNo<8 && currentPin<_nPins; bitNo++) {
+              // Process incoming value if it's come from the pin source node
+              uint8_t pinSource = GETFLASH(&_pinDefs[currentPin].node);
+              if (sendingNode == pinSource) {
+                if (byteValue & bitMask)
+                  byteValue |= bitMask;
+                else
+                  byteValue &= ~bitMask;
+                // if (pinNode == _thisNode) { // Local pin }
+              }
+              bitMask <<= 1;
+              currentPin++;
             }
-            currentPin++;
+            // Store the modified byte back
+            *bitFieldPtr++ = byteValue;
           }
         }
         break;
@@ -367,17 +468,19 @@ private:
   //  the node in question is not responding, and as little as 890us if the 
   //  ack is received immediately (including turning receiver on/off).
   //
-  // TODO: Separate writeFast from txStandBy to avoid blocking during transmission
-  //  and during retries.
-  //
   bool sendCommand(uint8_t node, uint8_t *buffer, uint8_t len) {
     _address[0] = node;
     _radio.openWritingPipe(_address);
+    // We have to stop the receiver before we can transmit.
     _radio.stopListening();
-    // Multicast if destination node is 255
-    bool ok = _radio.writeFast(buffer, len, (node==255)); 
-    _radio.txStandBy();
-    _radio.startListening();
+    // Copy the message into the radio and start the transmitter.
+    // Multicast (no ack expected) if destination node is 255.
+    bool ok = _radio.writeFast(buffer, len, (node==255));
+    // We will poll the radio later on to see when the transmit queue
+    // has emptied.  When that happens, we will go back to receive mode.
+    // This prevents txStandBy() from blocking while the transmission 
+    // is in progress.
+    _sendInProgress = true;;
     return ok;
   }
 
