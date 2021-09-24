@@ -26,6 +26,8 @@
 #ifndef MOTOR_SHIELD_TYPE
   #if __has_include ( "config.h")
     #include "config.h"
+  #elif __has_include ( "C_config.h")
+    #include "C_config.h"
   #else
     #include "config.example.h"
   #endif
@@ -66,6 +68,8 @@
 #define WIFI_SERIAL_LINK_SPEED 115200
 
 #if __has_include ( "myAutomation.h") && defined(BIG_RAM)
+  #define RMFT_ACTIVE
+#elif __has_include ( "C_myAutomation.h") && defined(BIG_RAM)
   #define RMFT_ACTIVE
 #endif
 
