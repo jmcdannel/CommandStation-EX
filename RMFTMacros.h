@@ -123,7 +123,11 @@
 #define XFOFF(cab,func)
 #define XFON(cab,func)
 
-#include "myAutomation.h"
+#if __has_include ( "myAutomation.h")
+  #include "myAutomation.h"
+#elif __has_include ( "C_myAutomation.h")  
+  #include "C_myAutomation.h"
+#endif
 
 // setup for pass 2... Create getMessageText function
 #undef ALIAS
@@ -152,7 +156,12 @@ const int StringMacroTracker1=__COUNTER__;
 #define SERIAL2(msg)  case (__COUNTER__ - StringMacroTracker1) : StringFormatter::send(L&Serial2,F(msg));break;
 #define SERIAL3(msg)  case (__COUNTER__ - StringMacroTracker1) : StringFormatter::send(&Serial3,F(msg));break;
 #define LCD(id,msg)   case (__COUNTER__ - StringMacroTracker1) : StringFormatter::lcd(id,F(msg));break;
-#include "myAutomation.h"
+
+#if __has_include ( "myAutomation.h")
+  #include "myAutomation.h"
+#elif __has_include ( "C_myAutomation.h")  
+  #include "C_myAutomation.h"
+#endif
 
 // Setup for Pass 3: create main routes table 
 #undef AFTER
@@ -301,7 +310,12 @@ const int StringMacroTracker1=__COUNTER__;
 
 // PASS2 Build RouteCode
 const int StringMacroTracker2=__COUNTER__;
-#include "myAutomation.h"
+
+#if __has_include ( "myAutomation.h")
+  #include "myAutomation.h"
+#elif __has_include ( "C_myAutomation.h")  
+  #include "C_myAutomation.h"
+#endif
 
 // Restore normal code LCD & SERIAL  macro
 #undef LCD
