@@ -18,6 +18,8 @@
 
 #if __has_include ( "config.h")
   #include "config.h"
+#elif __has_include ( "C_config.h")
+  #include "C_config.h"
 #else
   #warning config.h not found. Using defaults from config.example.h 
   #include "config.example.h"
@@ -63,8 +65,9 @@ void setup()
 
   CONDITIONAL_LCD_START {
     // This block is still executed for DIAGS if LCD not in use 
-    LCD(0,F("DCC++ EX v%S"),F(VERSION));
-    LCD(1,F("Lic GPLv3")); 
+    LCD(0,F("DCC++EX %S"),F(VERSION));
+    LCD(1,F("         EX-RAIL"));
+    LCD(2,F("Lic GPLv3")); 
     }   
 
   // Responsibility 2: Start all the communications before the DCC engine
@@ -101,6 +104,10 @@ void setup()
   #if __has_include ( "mySetup.h")
         #define SETUP(cmd) serialParser.parse(F(cmd))  
         #include "mySetup.h"
+        #undef SETUP
+  #elif __has_include ( "C_mySetup.h")
+        #define SETUP(cmd) serialParser.parse(F(cmd))  
+        #include "C_mySetup.h"
         #undef SETUP
        #endif
 
