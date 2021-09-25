@@ -3,7 +3,7 @@
 
 #include "StringFormatter.h"
 
-
+#define BRANCH_INFO "EX-RAIL-Ash317"
 #define VERSION "3.1.7 draft"
 // 3.1.7 Major functional and non-functional changes.
 //       New HAL added for I/O (digital and analogue inputs and outputs, servos etc).
