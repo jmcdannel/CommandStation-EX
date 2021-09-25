@@ -123,10 +123,10 @@
 #define XFOFF(cab,func)
 #define XFON(cab,func)
 
-#if __has_include ( "myAutomation.h")
-  #include "myAutomation.h"
-#elif __has_include ( "C_myAutomation.h")  
+#if __has_include ( "C_myAutomation.h")
   #include "C_myAutomation.h"
+#elif __has_include ( "myAutomation.h")  
+  #include "myAutomation.h"
 #endif
 
 // setup for pass 2... Create getMessageText function
@@ -157,10 +157,10 @@ const int StringMacroTracker1=__COUNTER__;
 #define SERIAL3(msg)  case (__COUNTER__ - StringMacroTracker1) : StringFormatter::send(&Serial3,F(msg));break;
 #define LCD(id,msg)   case (__COUNTER__ - StringMacroTracker1) : StringFormatter::lcd(id,F(msg));break;
 
-#if __has_include ( "myAutomation.h")
-  #include "myAutomation.h"
-#elif __has_include ( "C_myAutomation.h")  
+#if __has_include ( "C_myAutomation.h")
   #include "C_myAutomation.h"
+#elif __has_include ( "myAutomation.h")  
+  #include "myAutomation.h"
 #endif
 
 // Setup for Pass 3: create main routes table 
@@ -311,10 +311,10 @@ const int StringMacroTracker1=__COUNTER__;
 // PASS2 Build RouteCode
 const int StringMacroTracker2=__COUNTER__;
 
-#if __has_include ( "myAutomation.h")
-  #include "myAutomation.h"
-#elif __has_include ( "C_myAutomation.h")  
+#if __has_include ( "C_myAutomation.h")
   #include "C_myAutomation.h"
+#elif __has_include ( "myAutomation.h")  
+  #include "myAutomation.h"
 #endif
 
 // Restore normal code LCD & SERIAL  macro
