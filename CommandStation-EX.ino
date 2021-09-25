@@ -14,12 +14,15 @@
 // shipped with the code and may be updated as new features are added. 
 // 
 // If config.h is not found, config.example.h will be used with all defaults.
+//
+// Alternate naming using C_ prefix (custom settings) facilitates updates using Arduino IDE.
+//     C_config.h    C_myAutomation.h    C_mySetup.h
 ////////////////////////////////////////////////////////////////////////////////////
 
-#if __has_include ( "config.h")
-  #include "config.h"
-#elif __has_include ( "C_config.h")
+#if __has_include ( "C_config.h")
   #include "C_config.h"
+#elif __has_include ( "config.h")
+  #include "config.h"
 #else
   #warning config.h not found. Using defaults from config.example.h 
   #include "config.example.h"
@@ -101,13 +104,13 @@ void setup()
 
   // Invoke any DCC++EX commands in the form "SETUP("xxxx");"" found in optional file mySetup.h.  
   //  This can be used to create turnouts, outputs, sensors etc. throught the normal text commands.
-  #if __has_include ( "mySetup.h")
-        #define SETUP(cmd) serialParser.parse(F(cmd))  
-        #include "mySetup.h"
-        #undef SETUP
-  #elif __has_include ( "C_mySetup.h")
+  #if __has_include ( "C_mySetup.h")
         #define SETUP(cmd) serialParser.parse(F(cmd))  
         #include "C_mySetup.h"
+        #undef SETUP
+  #elif __has_include ( "mySetup.h")
+        #define SETUP(cmd) serialParser.parse(F(cmd))  
+        #include "mySetup.h"
         #undef SETUP
        #endif
 
