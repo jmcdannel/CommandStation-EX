@@ -22,7 +22,7 @@
 The configuration file for DCC-EX Command Station
 
 **********************************************************************/
-
+//#define USER_MSG "EX-RAIL Beta 12"  // Customize message displayed on LCD at startup.
 /////////////////////////////////////////////////////////////////////////////////////
 //  NOTE: Before connecting these boards and selecting one in this software
 //        check the quick install guides!!! Some of these boards require a voltage
