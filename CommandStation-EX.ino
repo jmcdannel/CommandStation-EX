@@ -69,8 +69,13 @@ void setup()
   CONDITIONAL_LCD_START {
     // This block is still executed for DIAGS if LCD not in use 
     LCD(0,F("DCC++EX %S"),F(VERSION));
-    LCD(1,F("         EX-RAIL"));
-    LCD(2,F("Lic GPLv3")); 
+    #if defined(BRANCH_INFO)
+       LCD(1,F("%S"),F(BRANCH_INFO));
+    #endif   
+    #if defined(USER_MSG)   
+       LCD(2,F("%S"),F(USER_MSG));
+    #endif
+    LCD(3,F("Lic GPLv3")); 
     }   
 
   // Responsibility 2: Start all the communications before the DCC engine
