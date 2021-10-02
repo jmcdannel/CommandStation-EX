@@ -203,7 +203,7 @@ protected:
 
   // Method to perform updates on an ongoing basis (optionally implemented within device class)
   virtual void _loop(unsigned long currentMicros) {
-    (void)currentMicros; // Suppress compiler warning.
+    delayUntil(currentMicros + 0x7fffffff); // Largest time in the future!  Effectively disable _loop calls.
   };
 
   // Method for displaying info on DIAG output (optionally implemented within device class)
