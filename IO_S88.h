@@ -31,7 +31,7 @@
  * Example configuration in mySetup.cpp:
  *    #include "IO_S88.h"
  *    void mySetup() {
- *      IO_S88::create(2500, 16, 40,41,42,43, 10);
+ *      S88bus::create(2500, 16, 40,41,42,43, 10);
  *    }
  *
  * This creates an S88 bus instance with 16 inputs (VPINs 2500-2515).
@@ -65,7 +65,7 @@
 
 #include "IODevice.h"
 
-class IO_S88 : public IODevice {
+class S88bus : public IODevice {
 
 private:
   uint8_t _loadPin;
@@ -79,7 +79,8 @@ private:
   uint16_t _shortDelayTime;
   uint8_t _bitIndex;
   unsigned long _lastPulseTime;
-  uint8_t _state = 0;
+  uint8_t _state;
+  uint8_t _maxBitsPerEntry;
 
 
   // The acquire cycle time is a target maximum rate.  If there are a lot of signals or the
@@ -87,7 +88,7 @@ private:
   const unsigned long _acquireCycleTime = 20000; // target 20 milliseconds between acquire cycles
 
 public:
-  IO_S88(VPIN firstVpin, int nPins, uint8_t loadPin, uint8_t resetPin, uint8_t clockPin, uint8_t dataInPin, uint16_t bitTime) :
+  S88bus(VPIN firstVpin, int nPins, uint8_t loadPin, uint8_t resetPin, uint8_t clockPin, uint8_t dataInPin, uint16_t bitTime) :
     IODevice(firstVpin, nPins),
     _loadPin(loadPin),
     _resetPin(resetPin),
@@ -101,11 +102,15 @@ public:
     _values = (uint8_t *)calloc((nPins+7)/8, 1);
     _shortDelayTime = (_pulseDelayTime > 10) ? 10 : _pulseDelayTime;
     _state = 0;
+    // The program typically manages 30 microseconds per clock cycle
+    // with no waiting, so limit the number of bits so that loop doesn't 
+    // take much more than 200us.
+    _maxBitsPerEntry = 200 / (30+bitTime) + 1;
     addDevice(this);
   }
 
   static void create(VPIN firstVpin, int nPins, uint8_t loadPin, uint8_t resetPin, uint8_t clockPin, uint8_t dataInPin, uint16_t bitTime) {
-    new IO_S88(firstVpin, nPins, loadPin, resetPin, clockPin, dataInPin, bitTime);
+    new S88bus(firstVpin, nPins, loadPin, resetPin, clockPin, dataInPin, bitTime);
   }
 
 protected:
@@ -167,6 +172,7 @@ protected:
         /* fallthrough */
       case 2:
         // Subsequent loop entries, read each bit in turn from the shiftregister.
+        uint8_t bitCount = 0;
         while (true) {
           uint8_t mask = (1 << _bitIndex);
           bool newValue = ArduinoPins::fastReadDigital(_dataInPin);
@@ -189,7 +195,6 @@ protected:
           if (_currentByteIndex*8 + _bitIndex >= _nPins) {
             // All bits in the shift register have been read now, so 
             // don't read again until next acquisition cycle time
-            _currentByteIndex = 0;  // Reset byte counter
             delayUntil(_lastAquireCycleStart + _acquireCycleTime);
             _state = 0;
             return;
@@ -201,8 +206,8 @@ protected:
           pulseDelay(_pulseDelayTime);
           ArduinoPins::fastWriteDigital(_clockPin, LOW);
 
-          // See if we've taken the time we're allowed on this entry
-          if (micros() - currentMicros >= 250) {
+          // See if we've done all we're allowed on this entry
+          if (++bitCount >= _maxBitsPerEntry) {
             delayUntil(_lastPulseTime + _pulseDelayTime);
             return;
           }
@@ -211,18 +216,14 @@ protected:
   }
 
   void _display() override {
-    DIAG(F("S88 Bus Configured on Vpins %d-%d, LOAD=%d RESET=%d CLK=%d DATAIN=%d"), 
+    DIAG(F("S88bus Configured on Vpins %d-%d, LOAD=%d RESET=%d CLK=%d DATAIN=%d"), 
       _firstVpin, _firstVpin+_nPins-1, _loadPin, _resetPin, _clockPin, _dataInPin);
   }
 
   // Helper function to delay until a minimum number of microseconds have elapsed
-  // since _lastPulseTime.
+  //  since _lastPulseTime.
   void pulseDelay(uint16_t duration) {
-    if (duration != 0) {
-      int delayRemaining = duration - (micros() - _lastPulseTime);
-      if (delayRemaining > 0) 
-        delayMicroseconds(delayRemaining);
-    }
+    delayMicroseconds(duration);
     _lastPulseTime = micros();
   }
 
