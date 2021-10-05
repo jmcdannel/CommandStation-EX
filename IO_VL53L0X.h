@@ -101,7 +101,6 @@ private:
   uint16_t _offThreshold;
   VPIN _xshutPin;
   bool _value;
-  bool _initialising = true;
   uint8_t _nextState = 0;
   I2CRB _rb;
   uint8_t _inBuffer[12];
@@ -145,14 +144,13 @@ public:
 
 protected:
   void _begin() override {
-    _initialising = true;
     if (_xshutPin == VPIN_NONE) {
       // Check if device is already responding on the nominated address.
       if (I2CManager.exists(_i2cAddress)) {
         // Yes, it's already on this address, so skip the address initialisation.
-        _nextState = 3;
+        _nextState = STATE_CONFIGUREDEVICE;
       } else {
-        _nextState = 0;
+        _nextState = STATE_INIT;
       }
     }
   }
@@ -195,7 +193,6 @@ protected:
           DIAG(F("VL53L0X I2C:x%x device not responding"), _i2cAddress);
           _deviceState = DEVSTATE_FAILED;
         }
-        _initialising = false;
         _nextState = STATE_INITIATESCAN;
         break;
       case STATE_INITIATESCAN:
