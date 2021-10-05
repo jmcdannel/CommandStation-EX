@@ -106,6 +106,17 @@ private:
   I2CRB _rb;
   uint8_t _inBuffer[12];
   uint8_t _outBuffer[2];
+  // State machine states.
+  enum : uint8_t {
+    STATE_INIT = 0,
+    STATE_CONFIGUREADDRESS = 1,
+    STATE_SKIP = 2,
+    STATE_CONFIGUREDEVICE = 3,
+    STATE_INITIATESCAN = 4,
+    STATE_CHECKSTATUS = 5,
+    STATE_GETRESULTS = 6,
+    STATE_DECODERESULTS = 7,
+  };
 
   // Register addresses
   enum : uint8_t {
@@ -145,16 +156,6 @@ protected:
       }
     }
   }
-  enum : uint8_t {
-    STATE_INIT = 0,
-    STATE_CONFIGUREADDRESS = 1,
-    STATE_SKIP = 2,
-    STATE_CONFIGUREDEVICE = 3,
-    STATE_INITIATESCAN = 4,
-    STATE_CHECKSTATUS = 5,
-    STATE_GETRESULTS = 6,
-    STATE_DECODERESULTS = 7,
-  };
 
   void _loop(unsigned long currentMicros) override {
     uint8_t status;
