@@ -19,10 +19,10 @@
 
 /*
  * nRF24 default mode of operation:
- *   Channel: 76
+ *   Channel: 108
  *   Bit rate: 2MHz
  *   CRC: 16-bit
- *   Power Level: Low
+ *   Power Level: High
  *
  * Each node on the network is configured with a node number in the range 0-254.
  * The remoting configuration defines, for each pin to be available remotely,
@@ -188,8 +188,8 @@ protected:
     if (_radio.begin(_cePin, _csnPin)) {
       // Device initialisation OK, set up parameters
       _radio.setDataRate(RF24_2MBPS);
-      _radio.setPALevel(RF24_PA_LOW);
-      _radio.setChannel(76);
+      _radio.setPALevel(RF24_PA_HIGH);
+      _radio.setChannel(108);
       _radio.enableDynamicPayloads();  // variable length packets
       _radio.setAutoAck(true);
       _radio.enableDynamicAck(); // required for multicast to work
@@ -230,7 +230,7 @@ protected:
     int pin = vpin - _firstVpin;
     uint8_t node = GETFLASH(&_pinDefs[pin].node);
     VPIN remoteVpin = GETFLASHW(&_pinDefs[pin].vpin);
-    if (node != _thisNode) {
+    if (node != _thisNode && remoteVpin != VPIN_NONE) {
       #ifdef DIAG_IO
       DIAG(F("RF24: write(%d,%d)=>send(%d,\"write(%d,%d)\")"), vpin, value, node, remoteVpin, value);
       #endif
@@ -251,7 +251,7 @@ protected:
     int pin = vpin - _firstVpin;
     uint8_t node = GETFLASH(&_pinDefs[pin].node);
     VPIN remoteVpin = GETFLASHW(&_pinDefs[pin].vpin);
-    if (node != _thisNode) {
+    if (node != _thisNode && remoteVpin != VPIN_NONE) {
       #ifdef DIAG_IO
       DIAG(F("RF24: writeAnalogue(%d,%d,%d,%d)=>send(%d,\"writeAnalogue(%d,%d,...)\")"), 
         vpin, value, param1, param2, node, remoteVpin, value);
@@ -320,31 +320,34 @@ private:
 
     // Update the _pinValues bitfield to reflect the current values of local pins.
     uint8_t count = 5;
+    bool state;
     for (int pin=_nextSendPin; pin<_nPins; pin++) {
       if (GETFLASH(&_pinDefs[pin].node) == _thisNode) {
         // Local pin, read and update current state of input
         VPIN localVpin = GETFLASHW(&_pinDefs[pin].vpin);
-        bool state = IODevice::read(localVpin);
-        uint16_t byteIndex = pin / 8;
-        uint8_t bitMask = 1 << (pin & 7);
-        uint8_t byteValue = _pinValues[byteIndex];
-        bool oldState = byteValue & bitMask;
-        if (state != oldState) {
-          // Store state in remote values array
-          if (state) 
-            byteValue |= bitMask;
-          else
-            byteValue &= ~bitMask;
-          _pinValues[byteIndex] = byteValue;
-          _changesPending = true;
-          //DIAG(F("RF24 VPIN:%d Val:%d"), _firstVpin+pin, state);
+        if (localVpin != VPIN_NONE) {
+          state = IODevice::read(localVpin);
+          uint16_t byteIndex = pin / 8;
+          uint8_t bitMask = 1 << (pin & 7);
+          uint8_t byteValue = _pinValues[byteIndex];
+          bool oldState = byteValue & bitMask;
+          if (state != oldState) {
+            // Store state in remote values array
+            if (state) 
+              byteValue |= bitMask;
+            else
+              byteValue &= ~bitMask;
+            _pinValues[byteIndex] = byteValue;
+            _changesPending = true;
+            //DIAG(F("RF24 VPIN:%d Val:%d"), _firstVpin+pin, state);
+          }
+          if (--count == 0) {
+            // Done enough checks for this entry, resume on next one.
+            _nextSendPin = pin+1;
+            return false;
+          }
         }
-        if (--count == 0) {
-          // Done enough checks for this entry, resume on next one.
-          _nextSendPin = pin+1;
-          return false;
-        }
-      }
+     }
     }
     _nextSendPin = 0;
 
