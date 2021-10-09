@@ -78,7 +78,7 @@
  * 
  * Example:
  *  REMOTEPINS rpins[] = {
- *    {0,20},     //4000  Node 0 GPIO pin 20
+ *    {0,30},     //4000  Node 0 GPIO pin 30
  *    {1,30},     //4001  Node 1 GPIO pin 30
  *    {1,100},    //4002  Node 1 Servo (PCA9685) pin
  *    {1,164},    //4003  Node 1 GPIO extender (MCP23017) pin
@@ -92,11 +92,11 @@
  * microcontroller; in addition, the CE and CSN pins on the nRF24 are connected to 
  * two pins (48 and 49 above).
  * 
- * If any of pins 4000-4003 are referenced by turnouts, outputs or sensors, or by EX-RAIL,
+ * If any of pins 4000-4004 are referenced by turnouts, outputs or sensors, or by EX-RAIL,
  * then the corresponding remote pin state will be retrieved or updated.  
  * For example, in EX-RAIL,
- *    SET(4000) will set pin 20 on Node 0 to +5V.
- *    AT(4001) will wait until pin 30 on Node 1 activates.
+ *    SET(4000) will set pin 30 on Node 0 to +5V.  -- but only temporarily until the pin is next read as an input!
+ *    AT(4001) will wait until the sensor attached to pin 30 on Node 1 activates.
  *    SERVO(4002,300,0) will reposition the servo on Node 1 PCA9685 module to position 300.
  * 
  * The following sensor definition will map onto VPIN 4004, i.e. Node 3 VPIN 164, 
@@ -294,7 +294,7 @@ protected:
   // updates that are due.
   void _loop(unsigned long currentMicros) override {
 
-    // Check for incoming data (including ack payloads)
+    // Check for incoming data
     if (_radio.available(NULL))
       processReceivedData();
 
@@ -394,7 +394,7 @@ private:
     }
     // Set next pin ready for next entry.
     _nextSendPin = _firstPinToSend;
-    
+
     return true;  // Done all we need to for this cycle.
   }
 
