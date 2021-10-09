@@ -120,7 +120,7 @@ public:
   }
 
   // User-friendly function for configuring a servo pin.
-  inline static bool configureServo(VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile, uint16_t duration, uint8_t initialState=0) {
+  inline static bool configureServo(VPIN vpin, uint16_t activePosition, uint16_t inactivePosition, uint8_t profile=0, uint16_t duration=0, uint8_t initialState=0) {
     int params[] = {(int)activePosition, (int)inactivePosition, profile, (int)duration, initialState};
     return IODevice::configure(vpin, CONFIGURE_SERVO, 5, params);
   }
