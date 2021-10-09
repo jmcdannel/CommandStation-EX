@@ -76,18 +76,18 @@
  *  but the value is only accepted in the receiving node if its definition
  *  shows that the signal originates in the sending node.
  * 
- * Example:
+ * Example to go into mySetup() function in mySetup.cpp:
  *  REMOTEPINS rpins[] = {
  *    {0,30},     //4000  Node 0 GPIO pin 30
  *    {1,30},     //4001  Node 1 GPIO pin 30
  *    {1,100},    //4002  Node 1 Servo (PCA9685) pin
  *    {1,164},    //4003  Node 1 GPIO extender (MCP23017) pin
- *    {3,164}     //4004  Node 3 GPIO extender (MCP23017) pin
+ *    {2,164}     //4004  Node 2 GPIO extender (MCP23017) pin
  *  }
  *  // FirstVPIN, nPins, thisNode, pinDefs, CEPin, CSNPin
  *  RF24Net::create(4000, NUMREMOTEPINS(rpins), 0, rpins, 48, 49);
  * 
- * This example defines VPINs 4000-4004 which map onto pins on nodes 0, 1 and 3.
+ * This example defines VPINs 4000-4004 which map onto pins on nodes 0, 1 and 2.
  * The nRF24 device has to be connected to the hardware MISO, MOSI, SCK and CS pins of the 
  * microcontroller; in addition, the CE and CSN pins on the nRF24 are connected to 
  * two pins (48 and 49 above).
@@ -95,17 +95,17 @@
  * If any of pins 4000-4004 are referenced by turnouts, outputs or sensors, or by EX-RAIL,
  * then the corresponding remote pin state will be retrieved or updated.  
  * For example, in EX-RAIL,
- *    SET(4000) will set pin 30 on Node 0 to +5V.  -- but only temporarily until the pin is next read as an input!
- *    AT(4001) will wait until the sensor attached to pin 30 on Node 1 activates.
- *    SERVO(4002,300,0) will reposition the servo on Node 1 PCA9685 module to position 300.
+ *    SET(4000) on node 1 or 2 will set pin 30 on Node 0 to +5V.  -- but only temporarily until the pin is next read as an input!
+ *    AT(4001) on node 0 or 2 will wait until the sensor attached to pin 30 on Node 1 activates.
+ *    SERVO(4002,300,0) on node 0 or 2 will reposition the servo on Node 1 PCA9685 module to position 300.
  * 
- * The following sensor definition will map onto VPIN 4004, i.e. Node 3 VPIN 164, 
+ * The following sensor definition on node 0 will map onto VPIN 4004, i.e. Node 2 VPIN 164, 
  * which is the first pin on the first MCP23017:
  *    <S 1 4004 0>
- * and when a sensor attached to the pin is activated (pin pulled down to 0V) the following
- * message will be generated:
+ * and when a sensor attached to the pin on node 2 is activated (pin pulled down to 0V) the following
+ * message will be generated on node 0:
  *    <Q 1>
- * When the sensor deactivates, the following message will be generated:
+ * When the sensor deactivates, the following message will be generated on node 0:
  *    <q 1>
  */
 
@@ -132,11 +132,9 @@ private:
   unsigned long _lastExecutionTime;
   // Current digital values for remoted pins, stored as a bit field
   uint8_t *_pinValues;
-  // Number of the current node (0=master, 1-255=slave)
+  // Number of the current node (0-254)
   uint8_t _thisNode;
-  // Maximum slave node number to be polled.  Set this lower to avoid unnecessary poll cycles.
-  const uint8_t _maxNode = 5;
-  // 5-byte nRF24L01 address.  First byte will contain the node number
+  // 5-byte nRF24L01 address.  First byte will contain the node number (0-254) or 255 for broadcast
   byte _address[5] = {0x00, 0xCC, 0xEE, 0xEE, 0xCC};
   // Maximum size of payload (must be 32 or less)
   static const uint8_t maxPayloadSize = 32;
@@ -214,9 +212,6 @@ protected:
       _radio.enableDynamicAck(); // required for multicast to work
       _radio.setRetries(1, 5);  // Retry time=1*250+250us=500us, count=5.
 
-      // Send and receive on address 255
-      _address[0] = 255;
-      _radio.openWritingPipe(_address);
       // Set to listen on the address 255
       _address[0] = 255;
       _radio.openReadingPipe(1, _address);
