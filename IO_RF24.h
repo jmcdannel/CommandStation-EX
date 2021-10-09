@@ -127,7 +127,7 @@ private:
   // pins must be arduino GPIO pins, not extender pins or HAL pins.
   int _cePin = -1;
   int _csnPin = -1;
-  const RPIN *_pinDefs;
+  const RPIN *_pinDefs;  // May need to become a far pointer!
   // Time of last loop execution
   unsigned long _lastExecutionTime;
   // Current digital values for remoted pins, stored as a bit field
@@ -146,6 +146,8 @@ private:
   bool _changesPending;
   int _nextSendPin = 0;
   unsigned long _lastMulticastTime;
+  int _firstPinToSend;  // must be a multiple of 8
+  int _numPinsToSend;   // need not be a multiple of 8
   
   RF24 _radio;
 
@@ -172,6 +174,23 @@ public:
     _address[4] = 0xCC;
     _pinValues = (uint8_t *)calloc((nPins+7)/8, 1);  // Allocate space for input values.
     addDevice(this);
+
+    // Identify which pins are allocated to this node.
+    _firstPinToSend = -1;
+    _numPinsToSend = 0;
+    for (int pin=0; pin<_nPins; pin++) {
+      uint8_t node = GETFLASH(&_pinDefs[pin].node);
+      if (node == _thisNode) {
+        if (_firstPinToSend==-1) _firstPinToSend = pin;
+        _numPinsToSend = pin - _firstPinToSend + 1;
+      }
+      //DIAG(F("Node=%d FirstPin=%d, NumPins=%d"), node, _firstPinToSend, _numPinsToSend);
+    }
+    // Round down to multiple of 8 (byte boundary).
+    _firstPinToSend /= 8;
+    _firstPinToSend *= 8;
+    _nextSendPin = _firstPinToSend;
+    //DIAG(F("FirstPin=%d, NumPins=%d"), _firstPinToSend, _numPinsToSend);
   }
 
   // Static create function provides alternative way to create object
@@ -318,10 +337,12 @@ private:
     // We could make digital state change notification mandatory, which would 
     // allow us to remove the loop altogether!
 
+    if (_numPinsToSend == 0) return true; // No pins to send from this node.
+
     // Update the _pinValues bitfield to reflect the current values of local pins.
     uint8_t count = 5;
     bool state;
-    for (int pin=_nextSendPin; pin<_nPins; pin++) {
+    for (int pin=_nextSendPin; pin<_firstPinToSend+_numPinsToSend; pin++) {
       if (GETFLASH(&_pinDefs[pin].node) == _thisNode) {
         // Local pin, read and update current state of input
         VPIN localVpin = GETFLASHW(&_pinDefs[pin].vpin);
@@ -349,21 +370,20 @@ private:
         }
      }
     }
-    _nextSendPin = 0;
 
     if (_changesPending) { 
       // On master and on slave, send pin states to other nodes
       outBuffer[0] = _thisNode;  // Originating node
       outBuffer[1] = NET_CMD_VALUEUPDATE;
-      // TODO: Handle more than 8*28=224 sensors! For this, we will need to start a new packet
-      // when the first one is full.  For the time being just send up to 224 values.
-      int byteCount = min((_nPins+7)/8, maxPayloadSize-4);
-      VPIN remoteVpin = _firstVpin;
+      // The packet size is 32 bytes, header is 4 bytes, so 28 bytes of data.
+      // We can therefore send up to 224 binary states per packet.
+      int byteCount = _numPinsToSend/8+1;
+      VPIN remoteVpin = _firstVpin+_firstPinToSend;
       outBuffer[2] = getMsb(remoteVpin);
       outBuffer[3] = getLsb(remoteVpin);
 
-      // Copy from pinValues array into buffer
-      memcpy(&outBuffer[4], &_pinValues[0], byteCount);
+      // Copy from pinValues array into buffer.  This is why _firstPinToSend must be a multiple of 8.
+      memcpy(&outBuffer[4], &_pinValues[_firstPinToSend/8], byteCount);
 
       // Broadcast update
       sendCommand(255, outBuffer, byteCount + 4);
@@ -372,6 +392,9 @@ private:
       _lastMulticastTime = micros();
       _changesPending = false;
     }
+    // Set next pin ready for next entry.
+    _nextSendPin = _firstPinToSend;
+    
     return true;  // Done all we need to for this cycle.
   }
 
