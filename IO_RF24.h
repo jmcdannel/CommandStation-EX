@@ -78,11 +78,11 @@
  * 
  * Example to go into mySetup() function in mySetup.cpp:
  *  REMOTEPINS rpins[] = {
- *    {0,30},     //4000  Node 0 GPIO pin 30
- *    {1,30},     //4001  Node 1 GPIO pin 30
- *    {1,100},    //4002  Node 1 Servo (PCA9685) pin
- *    {1,164},    //4003  Node 1 GPIO extender (MCP23017) pin
- *    {2,164}     //4004  Node 2 GPIO extender (MCP23017) pin
+ *    {0,30,RPIN_OUT},     //4000  Node 0 GPIO pin 30 (output)
+ *    {1,30,RPIN_IN},      //4001  Node 1 GPIO pin 30 (input)
+ *    {1,100,RPIN_INOUT},  //4002  Node 1 Servo (PCA9685) pin (output to servo, input busy flag)
+ *    {1,164,RPIN_IN},     //4003  Node 1 GPIO extender (MCP23017) pin (input)
+ *    {2,164,RPIN_IN}      //4004  Node 2 GPIO extender (MCP23017) pin (input)
  *  }
  *  // FirstVPIN, nPins, thisNode, pinDefs, CEPin, CSNPin
  *  RF24Net::create(4000, NUMREMOTEPINS(rpins), 0, rpins, 48, 49);
@@ -95,9 +95,10 @@
  * If any of pins 4000-4004 are referenced by turnouts, outputs or sensors, or by EX-RAIL,
  * then the corresponding remote pin state will be retrieved or updated.  
  * For example, in EX-RAIL,
- *    SET(4000) on node 1 or 2 will set pin 30 on Node 0 to +5V.  -- but only temporarily until the pin is next read as an input!
+ *    SET(4000) on node 1 or 2 will set pin 30 on Node 0 to +5V (pin is put into output mode on first write).
  *    AT(4001) on node 0 or 2 will wait until the sensor attached to pin 30 on Node 1 activates.
- *    SERVO(4002,300,0) on node 0 or 2 will reposition the servo on Node 1 PCA9685 module to position 300.
+ *    SERVO(4002,300,2) on node 0 or 2 will reposition the servo on Node 1 PCA9685 module to position 300, and
+ *              AT(-4002) will wait until the servo has finished moving.
  * 
  * The following sensor definition on node 0 will map onto VPIN 4004, i.e. Node 2 VPIN 164, 
  * which is the first pin on the first MCP23017:
@@ -117,9 +118,15 @@
 
 // Macros and type for creating the remote pin definitions.
 // The definitions are stored in PROGMEM to reduce RAM requirements.
-typedef struct { uint8_t node; VPIN vpin; } RPIN;
+// The flags byte contains, in the low 2 bits, RPIN_IN, RPIN_OUT or RPIN_INOUT.
+typedef struct { uint8_t node; VPIN vpin; uint8_t flags; } RPIN;
 #define REMOTEPINS  static const RPIN PROGMEM
 #define NUMREMOTEPINS(x) (sizeof(x)/sizeof(RPIN))
+enum {
+  RPIN_IN=1,
+  RPIN_OUT=2,
+  RPIN_INOUT=RPIN_IN|RPIN_OUT,
+};
 
 class RF24Net : public IODevice {
 
@@ -178,7 +185,9 @@ public:
     _numPinsToSend = 0;
     for (int pin=0; pin<_nPins; pin++) {
       uint8_t node = GETFLASH(&_pinDefs[pin].node);
-      if (node == _thisNode) {
+      uint8_t flags = GETFLASH(&_pinDefs[pin].flags);
+      // Check if the pin is an input on this node?
+      if (node == _thisNode && (flags & RPIN_IN)) {
         if (_firstPinToSend==-1) _firstPinToSend = pin;
         _numPinsToSend = pin - _firstPinToSend + 1;
       }
@@ -243,8 +252,9 @@ protected:
     // Send message
     int pin = vpin - _firstVpin;
     uint8_t node = GETFLASH(&_pinDefs[pin].node);
+    uint8_t flags = GETFLASH(&_pinDefs[pin].flags);
     VPIN remoteVpin = GETFLASHW(&_pinDefs[pin].vpin);
-    if (node != _thisNode && remoteVpin != VPIN_NONE) {
+    if (node != _thisNode && remoteVpin != VPIN_NONE && (flags & RPIN_OUT)) {
       #ifdef DIAG_IO
       DIAG(F("RF24: write(%d,%d)=>send(%d,\"write(%d,%d)\")"), vpin, value, node, remoteVpin, value);
       #endif
@@ -264,8 +274,9 @@ protected:
     // Send message
     int pin = vpin - _firstVpin;
     uint8_t node = GETFLASH(&_pinDefs[pin].node);
+    uint8_t flags = GETFLASH(&_pinDefs[pin].flags);
     VPIN remoteVpin = GETFLASHW(&_pinDefs[pin].vpin);
-    if (node != _thisNode && remoteVpin != VPIN_NONE) {
+    if (node != _thisNode && remoteVpin != VPIN_NONE && (flags & RPIN_OUT)) {
       #ifdef DIAG_IO
       DIAG(F("RF24: writeAnalogue(%d,%d,%d,%d)=>send(%d,\"writeAnalogue(%d,%d,...)\")"), 
         vpin, value, param1, param2, node, remoteVpin, value);
@@ -338,8 +349,9 @@ private:
     uint8_t count = 5;
     bool state;
     for (int pin=_nextSendPin; pin<_firstPinToSend+_numPinsToSend; pin++) {
-      if (GETFLASH(&_pinDefs[pin].node) == _thisNode) {
-        // Local pin, read and update current state of input
+      uint8_t flags = GETFLASH(&_pinDefs[pin].flags);
+      if ((flags & RPIN_IN) && GETFLASH(&_pinDefs[pin].node) == _thisNode) {
+        // Local input pin, read and update current state of input
         VPIN localVpin = GETFLASHW(&_pinDefs[pin].vpin);
         if (localVpin != VPIN_NONE) {
           state = IODevice::read(localVpin);
