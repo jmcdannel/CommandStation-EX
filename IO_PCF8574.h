@@ -17,6 +17,24 @@
  *  along with CommandStation.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+/* 
+ * The PCF8574 is a simple device; it only has one register.  The device 
+ * input/output mode and pullup are configured through this, and the 
+ * output state is written and the input state read through it too.
+ * 
+ * This is accomplished by having a weak resistor in series with the output,
+ * and a read-back of the other end of the resistor.  As an output, the 
+ * pin state is set to 1 or 0, and the output voltage goes to +5V or 0V
+ * (through the weak resistor).
+ * 
+ * In order to use the pin as an input, the output is written as
+ * a '1' in order to pull up the resistor.  Therefore the input will be
+ * 1 unless the pin is pulled down externally, in which case it will be 0.
+ * 
+ * As a consequence of this approach, it is not possible to use the device for
+ * inputs without pullups.
+ */
+
 #ifndef IO_PCF8574_H
 #define IO_PCF8574_H
 
@@ -58,6 +76,7 @@ private:
       uint8_t buffer[1];
       I2CManager.read(_I2CAddress, buffer, 1);
       _portInputState = ((uint16_t)buffer) & 0xff;
+      _portInputState &= _portInUse; // mask off unused pins
     } else {
       requestBlock.wait(); // Wait for preceding operation to complete
       // Issue new request to read GPIO register
@@ -71,6 +90,7 @@ private:
       _portInputState = ((uint16_t)inputBuffer[0]) & 0xff;
     else  
       _portInputState = 0xff;
+    _portInputState &= _portInUse; // mask off unused pins  
   }
 
   // Set up device ports
