@@ -54,10 +54,11 @@ private:
     I2CManager.write(_I2CAddress, 3, REG_GPPUA, temp, temp>>8);  
   }
   void _writePortModes() override {
-    // Write 1 to IODIR for in-use pins that are inputs, 0 for outputs (i.e. _portMode inverted)
+    // Write 0 to IODIR for in-use pins that are outputs, 1 for others.
     uint16_t temp = ~(_portMode & _portInUse);
     I2CManager.write(_I2CAddress, 3, REG_IODIRA, temp, temp>>8);
-    // Enable interrupt for those pins which are inputs (_portMode=0)
+    // Enable interrupt for in-use pins which are inputs (_portMode=0)
+    temp = ~_portMode & _portInUse;
     I2CManager.write(_I2CAddress, 3, REG_INTCONA, 0x00, 0x00);
     I2CManager.write(_I2CAddress, 3, REG_GPINTENA, temp, temp>>8);
   }

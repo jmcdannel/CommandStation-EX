@@ -89,8 +89,7 @@ private:
     if (status == I2C_STATUS_OK) 
       _portInputState = ((uint16_t)inputBuffer[0]) & 0xff;
     else  
-      _portInputState = 0xff;
-    _portInputState &= _portInUse; // mask off unused pins  
+      _portInputState = 0xff; 
   }
 
   // Set up device ports
