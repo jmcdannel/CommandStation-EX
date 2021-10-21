@@ -46,8 +46,6 @@ static uint8_t waitgwmac; // Bitwise flags of gateway router status - see below 
 #define WGW_REFRESHING 4 // Refreshing but already have gateway MAC
 #define WGW_ACCEPT_ARP_REPLY 8 // Accept an ARP reply
 
-#define CLIENTMSS 550
-
 const unsigned char arpreqhdr[] PROGMEM = { 0,1,8,0,6,4,0,1 }; // ARP request header
 const unsigned char iphdr[] PROGMEM = { 0x45,0,0,0x82,0,0,0x40,0,0x20 }; //IP header
 extern const uint8_t allOnes[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }; // Used for hardware (MAC) and IP broadcast addresses

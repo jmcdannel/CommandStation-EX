@@ -23,18 +23,12 @@ uint8_t EtherCard::gwip[IP_LEN];   // gateway
 uint8_t EtherCard::dhcpip[IP_LEN]; // dhcp server
 uint8_t EtherCard::dnsip[IP_LEN];  // dns server
 uint8_t EtherCard::hisip[IP_LEN];  // ip address of remote host
-uint16_t EtherCard::hisport = HTTP_PORT; // tcp port to browse to
-bool EtherCard::using_dhcp = false;
-bool EtherCard::persist_tcp_connection = false;
+
 uint16_t EtherCard::delaycnt = 0; //request gateway ARP lookup
 
 uint8_t EtherCard::begin (const uint16_t size,
                           const uint8_t* macaddr,
                           uint8_t csPin) {
-    using_dhcp = false;
-#if ETHERCARD_STASH
-    Stash::initMap();
-#endif
     copyMac(mymac, macaddr);
     return initialize(size, mymac, csPin);
 }
@@ -43,8 +37,6 @@ bool EtherCard::staticSetup (const uint8_t* my_ip,
                              const uint8_t* gw_ip,
                              const uint8_t* dns_ip,
                              const uint8_t* mask) {
-    using_dhcp = false;
-
     if (my_ip != 0)
         copyIp(myip, my_ip);
     if (gw_ip != 0)
@@ -58,11 +50,3 @@ bool EtherCard::staticSetup (const uint8_t* my_ip,
     return true;
 }
 
-char* EtherCard::wtoa(uint16_t value, char* ptr)
-{
-    if (value > 9)
-        ptr = wtoa(value / 10, ptr);
-    *ptr = '0' + value % 10;
-    *++ptr = 0;
-    return ptr;
-}
