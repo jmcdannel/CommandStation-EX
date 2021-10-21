@@ -18,115 +18,22 @@
 #endif // SERIAL_DEBUG
 
 
-/* Memory Map */
-#define NRF_CONFIG  0x00
-#define EN_AA       0x01
-#define EN_RXADDR   0x02
-#define SETUP_AW    0x03
-#define SETUP_RETR  0x04
-#define RF_CH       0x05
-#define RF_SETUP    0x06
-#define NRF_STATUS  0x07
-#define OBSERVE_TX  0x08
-#define CD          0x09
-#define RX_ADDR_P0  0x0A
-#define RX_ADDR_P1  0x0B
-#define RX_ADDR_P2  0x0C
-#define RX_ADDR_P3  0x0D
-#define RX_ADDR_P4  0x0E
-#define RX_ADDR_P5  0x0F
-#define TX_ADDR     0x10
-#define RX_PW_P0    0x11
-// #define RX_PW_P1    0x12
-// #define RX_PW_P2    0x13
-// #define RX_PW_P3    0x14
-// #define RX_PW_P4    0x15
-// #define RX_PW_P5    0x16
-#define FIFO_STATUS 0x17
-#define DYNPD       0x1C
-#define FEATURE     0x1D
-
-/* Bit Mnemonics */
-#define MASK_RX_DR  6
-#define MASK_TX_DS  5
-#define MASK_MAX_RT 4
-#define EN_CRC      3
-#define CRCO        2
-#define PWR_UP      1
-#define PRIM_RX     0
-#define ENAA_P5     5
-#define ENAA_P4     4
-#define ENAA_P3     3
-#define ENAA_P2     2
-#define ENAA_P1     1
-#define ENAA_P0     0
-#define ERX_P5      5
-#define ERX_P4      4
-#define ERX_P3      3
-#define ERX_P2      2
-#define ERX_P1      1
-#define ERX_P0      0
-#define AW          0
-#define ARD         4
-#define ARC         0
-#define PLL_LOCK    4
-#define CONT_WAVE   7
-#define RF_DR       3
-#define RF_PWR      6
-#define RX_DR       6
-#define TX_DS       5
-#define MAX_RT      4
-#define RX_P_NO     1
-#define TX_FULL     0
-#define PLOS_CNT    4
-#define ARC_CNT     0
-#define TX_REUSE    6
-#define FIFO_FULL   5
-#define TX_EMPTY    4
-#define RX_FULL     1
-#define RX_EMPTY    0
-#define DPL_P5      5
-#define DPL_P4      4
-#define DPL_P3      3
-#define DPL_P2      2
-#define DPL_P1      1
-#define DPL_P0      0
-#define EN_DPL      2
-#define EN_ACK_PAY  1
-#define EN_DYN_ACK  0
-
-/* Instruction Mnemonics */
-#define R_REGISTER    0x00
-#define W_REGISTER    0x20
-#define REGISTER_MASK 0x1F
-#define ACTIVATE      0x50
-#define R_RX_PL_WID   0x60
-#define R_RX_PAYLOAD  0x61
-#define W_TX_PAYLOAD  0xA0
-#define W_ACK_PAYLOAD 0xA8
-#define FLUSH_TX      0xE1
-#define FLUSH_RX      0xE2
-#define REUSE_TX_PL   0xE3
-#define RF24_NOP      0xFF
-
-/* Non-P omissions */
-#define LNA_HCURR   0
-
-/* P model memory Map */
-#define RPD                  0x09
-#define W_TX_PAYLOAD_NO_ACK  0xB0
-
-/* P model bit Mnemonics */
-#define RF_DR_LOW   5
-#define RF_DR_HIGH  3
-#define RF_PWR_LOW  1
-#define RF_PWR_HIGH 2
 
 /****************************************************************************/
 
 void RF24::csn(bool mode)
 {
+#ifdef ARDUINO_ARCH_AVR
+    if (!csnPtr) return;
+    noInterrupts();
+    if (mode)
+      *csnPtr |= csnMask;
+    else
+      *csnPtr &= ~csnMask;
+    interrupts();
+#else
     digitalWrite(csn_pin, mode);
+#endif
     delayMicroseconds(csDelay);
 }
 
@@ -136,7 +43,17 @@ void RF24::ce(bool level)
 {
     //Allow for 3-pin use on ATTiny
     if (ce_pin != csn_pin) {
-        digitalWrite(ce_pin, level);
+#ifdef ARDUINO_ARCH_AVR
+      if (!cePtr) return;
+      noInterrupts();
+      if (level)
+        *cePtr |= ceMask;
+      else
+        *cePtr &= ~ceMask;
+      interrupts();
+#else
+      digitalWrite(ce_pin, level);
+#endif
     }
 }
 
@@ -286,62 +203,10 @@ uint8_t RF24::get_status(void)
 }
 
 /****************************************************************************/
-#if !defined(MINIMAL)
-
-void RF24::print_status(uint8_t _status)
-{
-    printf_P(PSTR("STATUS\t\t= 0x%02x RX_DR=%x TX_DS=%x MAX_RT=%x RX_P_NO=%x TX_FULL=%x\r\n"), _status, (_status & _BV(RX_DR)) ? 1 : 0,
-            (_status & _BV(TX_DS)) ? 1 : 0, (_status & _BV(MAX_RT)) ? 1 : 0, ((_status >> RX_P_NO) & 0x07), (_status & _BV(TX_FULL)) ? 1 : 0);
-}
-
-/****************************************************************************/
-
-
-void RF24::print_observe_tx(uint8_t value)
-{
-    printf_P(PSTR("OBSERVE_TX=%02x: POLS_CNT=%x ARC_CNT=%x\r\n"), value, (value >> PLOS_CNT) & 0x0F, (value >> ARC_CNT) & 0x0F);
-}
-
-/****************************************************************************/
-
-void RF24::print_byte_register(const char* name, uint8_t reg, uint8_t qty)
-{
-    //char extra_tab = strlen_P(name) < 8 ? '\t' : 0;
-    //printf_P(PSTR(PRIPSTR"\t%c ="),name,extra_tab);
-    printf_P(PSTR(PRIPSTR"\t="),name);
-    while (qty--) {
-        printf_P(PSTR(" 0x%02x"), read_register(reg++));
-    }
-    printf_P(PSTR("\r\n"));
-}
-
-/****************************************************************************/
-
-void RF24::print_address_register(const char* name, uint8_t reg, uint8_t qty)
-{
-
-    printf_P(PSTR(PRIPSTR"\t="), name);
-    while (qty--) {
-        uint8_t buffer[addr_width];
-        read_register(reg++ & REGISTER_MASK, buffer, sizeof(buffer));
-
-        printf_P(PSTR(" 0x"));
-        uint8_t* bufptr = buffer + sizeof(buffer);
-        while (--bufptr >= buffer) {
-            printf_P(PSTR("%02x"), *bufptr);
-        }
-    }
-
-    printf_P(PSTR("\r\n"));
-}
-
-#endif // !defined(MINIMAL)
-
-/****************************************************************************/
 
 RF24::RF24(uint16_t _cepin, uint16_t _cspin, uint32_t _spi_speed)
         :ce_pin(_cepin), csn_pin(_cspin), spi_speed(_spi_speed), payload_size(32), dynamic_payloads_enabled(true), addr_width(5), _is_p_variant(false),
-         csDelay(5)
+         csDelay(0)
 {
     _init_obj();
 }
@@ -350,7 +215,7 @@ RF24::RF24(uint16_t _cepin, uint16_t _cspin, uint32_t _spi_speed)
 
 RF24::RF24(uint32_t _spi_speed)
         :ce_pin(0xFFFF), csn_pin(0xFFFF), spi_speed(_spi_speed), payload_size(32), dynamic_payloads_enabled(true), addr_width(5), _is_p_variant(false),
-         csDelay(5)
+         csDelay(0)
 {
     _init_obj();
 }
@@ -402,170 +267,6 @@ uint8_t RF24::getPayloadSize(void)
 
 /****************************************************************************/
 
-#if !defined(MINIMAL)
-
-static const PROGMEM char rf24_datarate_e_str_0[] = "= 1 MBPS";
-static const PROGMEM char rf24_datarate_e_str_1[] = "= 2 MBPS";
-static const PROGMEM char rf24_datarate_e_str_2[] = "= 250 KBPS";
-static const PROGMEM char * const rf24_datarate_e_str_P[] = {
-  rf24_datarate_e_str_0,
-  rf24_datarate_e_str_1,
-  rf24_datarate_e_str_2,
-};
-static const PROGMEM char rf24_model_e_str_0[] = "nRF24L01";
-static const PROGMEM char rf24_model_e_str_1[] = "nRF24L01+";
-static const PROGMEM char * const rf24_model_e_str_P[] = {
-  rf24_model_e_str_0,
-  rf24_model_e_str_1,
-};
-static const PROGMEM char rf24_crclength_e_str_0[] = "= Disabled";
-static const PROGMEM char rf24_crclength_e_str_1[] = "= 8 bits";
-static const PROGMEM char rf24_crclength_e_str_2[] = "= 16 bits" ;
-static const PROGMEM char * const rf24_crclength_e_str_P[] = {
-  rf24_crclength_e_str_0,
-  rf24_crclength_e_str_1,
-  rf24_crclength_e_str_2,
-};
-static const PROGMEM char rf24_pa_dbm_e_str_0[] = "= PA_MIN";
-static const PROGMEM char rf24_pa_dbm_e_str_1[] = "= PA_LOW";
-static const PROGMEM char rf24_pa_dbm_e_str_2[] = "= PA_HIGH";
-static const PROGMEM char rf24_pa_dbm_e_str_3[] = "= PA_MAX";
-static const PROGMEM char * const rf24_pa_dbm_e_str_P[] = {
-  rf24_pa_dbm_e_str_0,
-  rf24_pa_dbm_e_str_1,
-  rf24_pa_dbm_e_str_2,
-  rf24_pa_dbm_e_str_3,
-};
-
-static const PROGMEM char rf24_feature_e_str_on[] = "= Enabled";
-static const PROGMEM char rf24_feature_e_str_allowed[] = "= Allowed";
-static const PROGMEM char rf24_feature_e_str_open[] = " open ";
-static const PROGMEM char rf24_feature_e_str_closed[] = "closed";
-static const PROGMEM char * const rf24_feature_e_str_P[] = {
-    rf24_crclength_e_str_0,
-    rf24_feature_e_str_on,
-    rf24_feature_e_str_allowed,
-    rf24_feature_e_str_closed,
-    rf24_feature_e_str_open
-};
-
-void RF24::printDetails(void)
-{
-
-    printf_P(PSTR("SPI Speedz\t= %d Mhz\n"),(uint8_t)(spi_speed/1000000)); //Print the SPI speed 
-
-    print_status(get_status());
-
-    print_address_register(PSTR("RX_ADDR_P0-1"), RX_ADDR_P0, 2);
-    print_byte_register(PSTR("RX_ADDR_P2-5"), RX_ADDR_P2, 4);
-    print_address_register(PSTR("TX_ADDR\t"), TX_ADDR);
-
-    print_byte_register(PSTR("RX_PW_P0-6"), RX_PW_P0, 6);
-    print_byte_register(PSTR("EN_AA\t"), EN_AA);
-    print_byte_register(PSTR("EN_RXADDR"), EN_RXADDR);
-    print_byte_register(PSTR("RF_CH\t"), RF_CH);
-    print_byte_register(PSTR("RF_SETUP"), RF_SETUP);
-    print_byte_register(PSTR("CONFIG\t"), NRF_CONFIG);
-    print_byte_register(PSTR("DYNPD/FEATURE"), DYNPD, 2);
-
-    printf_P(PSTR("Data Rate\t"
-    PRIPSTR
-    "\r\n"),(char*)pgm_read_ptr(&rf24_datarate_e_str_P[getDataRate()]));
-    printf_P(PSTR("Model\t\t= "
-    PRIPSTR
-    "\r\n"),(char*)pgm_read_ptr(&rf24_model_e_str_P[isPVariant()]));
-    printf_P(PSTR("CRC Length\t"
-    PRIPSTR
-    "\r\n"),(char*)pgm_read_ptr(&rf24_crclength_e_str_P[getCRCLength()]));
-    printf_P(PSTR("PA Power\t"
-    PRIPSTR
-    "\r\n"),(char*)pgm_read_ptr(&rf24_pa_dbm_e_str_P[getPALevel()]));
-    printf_P(PSTR("ARC\t\t= %d\r\n"), getARC());
-}
-
-void RF24::printPrettyDetails(void) {
-
-    printf_P(PSTR("SPI Frequency\t\t= %d Mhz\n"), (uint8_t)(spi_speed / 1000000)); //Print the SPI speed
-
-    uint8_t channel = getChannel();
-    uint16_t frequency = (uint16_t)channel + 2400;
-    printf_P(PSTR("Channel\t\t\t= %u (~ %u MHz)\r\n"), channel, frequency);
-
-    printf_P(PSTR("RF Data Rate\t\t"
-    PRIPSTR
-    "\r\n"), (char*)pgm_read_ptr(&rf24_datarate_e_str_P[getDataRate()]));
-    printf_P(PSTR("RF Power Amplifier\t"
-    PRIPSTR
-    "\r\n"), (char*)pgm_read_ptr(&rf24_pa_dbm_e_str_P[getPALevel()]));
-    printf_P(PSTR("RF Low Noise Amplifier\t"
-    PRIPSTR
-    "\r\n"), (char*)pgm_read_ptr(&rf24_feature_e_str_P[(bool)(read_register(RF_SETUP) & 1) * 1]));
-    printf_P(PSTR("CRC Length\t\t"
-    PRIPSTR
-    "\r\n"), (char*)pgm_read_ptr(&rf24_crclength_e_str_P[getCRCLength()]));
-    printf_P(PSTR("Address Length\t\t= %d bytes\r\n"), (read_register(SETUP_AW) & 3) + 2);
-    printf_P(PSTR("Static Payload Length\t= %d bytes\r\n"), getPayloadSize());
-
-    uint8_t setupRetry = read_register(SETUP_RETR);
-    printf_P(PSTR("Auto Retry Delay\t= %d microseconds\r\n"), (uint16_t)(setupRetry >> ARD) * 250 + 250);
-    printf_P(PSTR("Auto Retry Attempts\t= %d maximum\r\n"), setupRetry & 0x0F);
-
-    uint8_t observeTx = read_register(OBSERVE_TX);
-    printf_P(PSTR("Packets lost on\n    current channel\t= %d\r\n"), observeTx >> 4);
-    printf_P(PSTR("Retry attempts made for\n    last transmission\t= %d\r\n"), observeTx & 0x0F);
-
-    uint8_t features = read_register(FEATURE);
-    printf_P(PSTR("Multicast\t\t"
-    PRIPSTR
-    "\r\n"), (char*)pgm_read_ptr(&rf24_feature_e_str_P[(bool)(features & _BV(EN_DYN_ACK)) * 2]));
-    printf_P(PSTR("Custom ACK Payload\t"
-    PRIPSTR
-    "\r\n"), (char*)pgm_read_ptr(&rf24_feature_e_str_P[(bool)(features & _BV(EN_ACK_PAY)) * 1]));
-
-    uint8_t dynPl = read_register(DYNPD);
-    printf_P(PSTR("Dynamic Payloads\t"
-    PRIPSTR
-    "\r\n"), (char*)pgm_read_ptr(&rf24_feature_e_str_P[(dynPl && (features &_BV(EN_DPL))) * 1]));
-
-    uint8_t autoAck = read_register(EN_AA);
-    if (autoAck == 0x3F || autoAck == 0) {
-        // all pipes have the same configuration about auto-ack feature
-        printf_P(PSTR("Auto Acknowledgment\t"
-        PRIPSTR
-        "\r\n"), (char*)pgm_read_ptr(&rf24_feature_e_str_P[(bool)(autoAck) * 1]));
-    } else {
-        // representation per pipe
-        printf_P(PSTR("Auto Acknowledgment\t= 0b%c%c%c%c%c%c\r\n"),
-                 (char)((bool)(autoAck & _BV(ENAA_P5)) + 48),
-                 (char)((bool)(autoAck & _BV(ENAA_P4)) + 48),
-                 (char)((bool)(autoAck & _BV(ENAA_P3)) + 48),
-                 (char)((bool)(autoAck & _BV(ENAA_P2)) + 48),
-                 (char)((bool)(autoAck & _BV(ENAA_P1)) + 48),
-                 (char)((bool)(autoAck & _BV(ENAA_P0)) + 48));
-    }
-
-    config_reg = read_register(NRF_CONFIG);
-    printf_P(PSTR("Primary Mode\t\t= %cX\r\n"), config_reg & _BV(PRIM_RX) ? 'R' : 'T');
-    print_address_register(PSTR("TX address\t"), TX_ADDR);
-
-    uint8_t openPipes = read_register(EN_RXADDR);
-    for (uint8_t i = 0; i < 6; ++i) {
-        bool isOpen = openPipes & _BV(i);
-        printf_P(PSTR("pipe %u ("
-        PRIPSTR
-        ") bound"), i, (char*)pgm_read_ptr(&rf24_feature_e_str_P[isOpen + 3]));
-        if (i < 2) {
-            print_address_register(PSTR(""), RX_ADDR_P0 + i);
-        }
-        else {
-            print_byte_register(PSTR(""), RX_ADDR_P0 + i);
-        }
-    }
-}
-#endif // !defined(MINIMAL)
-
-/****************************************************************************/
-
 bool RF24::begin(_SPI* spiBus)
 {
     _spi = spiBus;
@@ -614,6 +315,19 @@ bool RF24::_init_pins()
         pinMode(ce_pin, OUTPUT);
         pinMode(csn_pin, OUTPUT);
     }
+
+#ifdef ARDUINO_ARCH_AVR
+    if (ce_pin < NUM_DIGITAL_PINS) {
+      cePtr = portOutputRegister(digitalPinToPort(ce_pin));
+      ceMask = digitalPinToBitMask(ce_pin);
+    } else
+      cePtr = NULL;
+    if (csn_pin < NUM_DIGITAL_PINS) {
+      csnPtr = portOutputRegister(digitalPinToPort(csn_pin));
+      csnMask = digitalPinToBitMask(csn_pin);
+    } else 
+      csnPtr = NULL;
+#endif
 
     ce(LOW);
     csn(HIGH);
