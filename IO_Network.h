@@ -129,9 +129,9 @@ private:
   unsigned long _lastExecutionTime;
   // Current digital values for remoted pins, stored as a bit field
   uint8_t *_pinValues;
-  // Number of the current node (0-254)
+  // Number of the current node (1-254)
   uint8_t _thisNode;
-  // Maximum size of payload (must be 32 or less)
+  // Maximum size of payload (must be 32 or less for RF24)
   static const uint8_t maxPayloadSize = 32;
   bool _updatePending;
   int _nextSendPin;
@@ -286,8 +286,8 @@ protected:
   }
 
   void _display() override {
-    DIAG(F("Network Configured on Vpins:%d-%d %S"),
-      _firstVpin, _firstVpin+_nPins-1, (_deviceState==DEVSTATE_FAILED) ? F("OFFLINE") : F(""));
+    DIAG(F("Network Configured on Vpins:%d-%d Node:%d%S"),
+      _firstVpin, _firstVpin+_nPins-1, _thisNode, (_deviceState==DEVSTATE_FAILED) ? F(" OFFLINE") : F(""));
   }
 
 private:
@@ -296,13 +296,13 @@ private:
   //
   bool sendSensorUpdates() { 
     // This loop is split into multiple loop() entries, so as not to hog
-    // the cpu for too long.  Otherwise it could take over 2700us with 108 remote
-    // pins configured, for example.  So we do just 5 pins per call.  
+    // the cpu for too long.  
 
     if (_numPinsToSend == 0) return true; // No pins to send from this node.
 
     // Update the _pinValues bitfield to reflect the current values of local pins.
-    uint8_t count = 5;
+    // Process maximum of 16 pins per entry.
+    uint8_t count = 16;
     bool state;
     // First time through, _nextSendPin is equal to _firstPinToSend.
     for (int pin=_nextSendPin; pin<_firstPinToSend+_numPinsToSend; pin++) {
@@ -376,7 +376,7 @@ private:
     if (size < 4) return; // packet too short.
     // Extract command type from packet.
     uint8_t command = netBuffer[1];
-    DIAG(F("Received %d bytes, type=%d"), size, command);
+    //DIAG(F("Received %d bytes, type=%d"), size, command);
     // Process received data 
     switch (command) {
       case NET_CMD_WRITE: // Digital write command
@@ -407,7 +407,7 @@ private:
       case NET_CMD_VALUEUPDATE: // Updates of input states (sensors etc).
         {
           uint8_t sendingNode = netBuffer[0];
-          //DIAG(F("Node %d Rx %x"), sendingNode, netBuffer[4]);
+          //DIAG(F("Node %d Rx States %x"), sendingNode, netBuffer[4]);
           VPIN vpin = makeWord(netBuffer[2], netBuffer[3]);
 
           // Read through the buffer one byte at a time.

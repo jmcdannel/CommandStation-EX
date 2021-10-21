@@ -43,7 +43,8 @@
  * receiver off and on.
  *
  * Usage:
- *  DCCNetDriver driver = new RF24Driver(48, 49);
+ *  Net_RF24 rf24Driver = new Net_RF24(48, 49);
+ *  Network<Net_RF24>::create(4000, NUMREMOTEPINS(rpins), 1, rpins, rf24Driver);
  * 
  * The nRF24 device has to be connected to the hardware MISO, MOSI, SCK and CS pins of the 
  * microcontroller; in addition, the CE and CSN pins on the nRF24 are connected to 
@@ -63,7 +64,7 @@ private:
   // pins must be arduino GPIO pins, not extender pins or HAL pins.
   int _cePin;
   int _csnPin;
-  // Number of the current node (0-254)
+  // Number of the current node (1-254)
   uint8_t _thisNode;
   // 5-byte nRF24L01 address.  First byte will contain the node number (0-254) or 255 for broadcast
   byte _address[5];
