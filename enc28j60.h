@@ -184,7 +184,7 @@ public:
     static void memcpy_from_enc(void* dest, uint16_t source, int16_t num);
 };
 
-typedef ENC28J60 Ethernet; //!< Define alias Ethernet for ENC28J60
+// typedef ENC28J60 Ethernet; //!< Define alias Ethernet for ENC28J60
 
 
 /** Workaround for Errata 13.

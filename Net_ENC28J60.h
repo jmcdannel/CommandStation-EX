@@ -31,8 +31,8 @@
  * infrequent.
  *
  * Usage:
- *  Net_ENC28J60 encDriver = new Net_ENC28J60(10);
- *  Network<Net_ENC28J60>::create(4000, NUMREMOTEPINS(rpins), 1, rpins, encDriver
+ *  Net_ENC28J60 *encDriver = new Net_ENC28J60(10);
+ *  Network<Net_ENC28J60>::create(4000, NUMREMOTEPINS(rpins), 1, rpins, encDriver);
  * 
  * The ENC28J60 device has to be connected to the hardware MISO, MOSI, SCK and CS pins of the 
  * microcontroller.  The CS pin is specified in the command above (e.g. 10).
@@ -49,7 +49,7 @@
 
 // The ethernet buffer is global to different protocol layers, to avoid almost
 // all copying of data.
-byte Ethernet::buffer[74]; // Need space for 32 byte payload and 42 byte header.
+byte ENC28J60::buffer[74]; // Need space for 32 byte payload and 42 byte header.
 
 class Net_ENC28J60 : public EtherCard {
 
@@ -79,7 +79,7 @@ public:
     _thisNode = thisNode;
     _address[5] = _thisNode;
     _ipAddress[3] = _thisNode;
-    if (ether.begin(sizeof(Ethernet::buffer), _address, _csPin)) {
+    if (ether.begin(sizeof(ENC28J60::buffer), _address, _csPin)) {
       ether.staticSetup(_ipAddress, _gwAddress, 0, _netMask);
       return true;
     } else {
@@ -98,7 +98,7 @@ public:
       // Packet received.  First handle ICMP, ARP etc.
       if (ether.packetLoop(packetLen)) {
         // UDP packet to be handled.  Check if it's our port number
-        byte *gbp = Ethernet::buffer;
+        byte *gbp = ENC28J60::buffer;
         uint16_t destPort = (gbp[UDP_DST_PORT_H_P] << 8) + gbp[UDP_DST_PORT_L_P];
         if (destPort == _port) {
           // Yes, so mark that data is to be processed.
@@ -118,7 +118,7 @@ public:
       //DIAG(F("ReadPacket(%d)"), _packetBytesAvailable);
       // Adjust length and pointer for UDP header
       int udpFrameSize = _packetBytesAvailable - UDP_DATA_P;
-      byte *udpFrame = &Ethernet::buffer[UDP_DATA_P];
+      byte *udpFrame = &ENC28J60::buffer[UDP_DATA_P];
 
       // Clear packet byte marker
       _packetBytesAvailable = 0;
