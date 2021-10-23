@@ -43,7 +43,7 @@
  * receiver off and on.
  *
  * Usage:
- *  Net_RF24 rf24Driver = new Net_RF24(48, 49);
+ *  Net_RF24 *rf24Driver = new Net_RF24(48, 49);
  *  Network<Net_RF24>::create(4000, NUMREMOTEPINS(rpins), 1, rpins, rf24Driver);
  * 
  * The nRF24 device has to be connected to the hardware MISO, MOSI, SCK and CS pins of the 
