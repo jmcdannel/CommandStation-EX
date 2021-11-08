@@ -117,16 +117,17 @@ public:
     if (_packetBytesAvailable > 0) {
       //DIAG(F("ReadPacket(%d)"), _packetBytesAvailable);
       // Adjust length and pointer for UDP header
-      int udpFrameSize = _packetBytesAvailable - UDP_DATA_P;
+      byte *gbp = ENC28J60::buffer;
+      int udpDataSize = (gbp[UDP_LEN_H_P] << 8) + gbp[UDP_LEN_L_P] - UDP_HEADER_LEN;
       byte *udpFrame = &ENC28J60::buffer[UDP_DATA_P];
 
       // Clear packet byte marker
       _packetBytesAvailable = 0;
 
       // Check if there's room for the data
-      if (bufferSize >= udpFrameSize) {
-        memcpy(buffer, udpFrame, udpFrameSize);
-        return udpFrameSize;
+      if (bufferSize >= udpDataSize) {
+        memcpy(buffer, udpFrame, udpDataSize);
+        return udpDataSize;
       }
     }
     return 0;

@@ -142,9 +142,20 @@ private:
   
   // List of network commands
   enum : uint8_t {
-    NET_CMD_WRITE,
-    NET_CMD_WRITEANALOGUE,
-    NET_CMD_VALUEUPDATE,
+    NET_CMD_WRITE = 0,
+    NET_CMD_WRITEANALOGUE = 1,
+    NET_CMD_VALUEUPDATE = 2,
+  };
+
+  // Field Positions in Network Header
+  enum NetHeader {
+    IONET_SENDNODE = 0,   // for VALUEUPDATE
+    IONET_DESTNODE = 0,   // for WRITE/WRITEANALOGUE
+    IONET_CMDTYPE = 1,
+    IONET_VPIN = 2,
+    IONET_VPIN_H = 2,
+    IONET_VPIN_L = 3,
+    IONET_DATA = 4,
   };
 
 public:
@@ -175,6 +186,8 @@ public:
     _firstPinToSend /= 8;
     _firstPinToSend *= 8;
     _numPinsToSend = lastPinToSend - _firstPinToSend + 1;
+    // Restrict to the max that fit in a packet
+    _numPinsToSend = min(8*(MAX_MSG_SIZE-IONET_DATA),_numPinsToSend);
     //DIAG(F("FirstPin=%d, NumPins=%d"), _firstPinToSend, _numPinsToSend);
 
     // Prepare for first transmission
@@ -221,13 +234,13 @@ protected:
       DIAG(F("Network: write(%d,%d)=>send(%d,\"write(%d,%d)\")"), vpin, value, node, remoteVpin, value);
       #endif
 
-      netBuffer[0] = node;
-      netBuffer[1] = NET_CMD_WRITE;
-      netBuffer[2] = getMsb(remoteVpin);
-      netBuffer[3] = getLsb(remoteVpin);
-      netBuffer[4] = (uint8_t)value;
+      netBuffer[IONET_DESTNODE] = node;
+      netBuffer[IONET_CMDTYPE] = NET_CMD_WRITE;
+      netBuffer[IONET_VPIN_H] = getMsb(remoteVpin);
+      netBuffer[IONET_VPIN_L] = getLsb(remoteVpin);
+      netBuffer[IONET_DATA] = (uint8_t)value;
       // Set up to send to the specified node address
-      _netDriver->sendCommand(node, netBuffer, 5);
+      _netDriver->sendCommand(node, netBuffer, IONET_DATA+1);
     }
   }
 
@@ -244,23 +257,27 @@ protected:
         vpin, value, param1, param2, node, remoteVpin, value);
       #endif
 
-      netBuffer[0] = node;
-      netBuffer[1] = NET_CMD_WRITEANALOGUE;
-      netBuffer[2] = getMsb(remoteVpin);
-      netBuffer[3] = getLsb(remoteVpin);
-      netBuffer[4] = getMsb(value);
-      netBuffer[5] = getLsb(value);
-      netBuffer[6] = param1;
-      netBuffer[7] = getMsb(param2);
-      netBuffer[8] = getLsb(param2);
+      netBuffer[IONET_DESTNODE] = node;
+      netBuffer[IONET_CMDTYPE] = NET_CMD_WRITEANALOGUE;
+      netBuffer[IONET_VPIN_H] = getMsb(remoteVpin);
+      netBuffer[IONET_VPIN_L] = getLsb(remoteVpin);
+      netBuffer[IONET_DATA+0] = getMsb(value);
+      netBuffer[IONET_DATA+1] = getLsb(value);
+      netBuffer[IONET_DATA+2] = param1;
+      netBuffer[IONET_DATA+3] = getMsb(param2);
+      netBuffer[IONET_DATA+4] = getLsb(param2);
       // Set up to send to the specified node address
-      _netDriver->sendCommand(node, netBuffer, 9);
+      _netDriver->sendCommand(node, netBuffer, IONET_DATA+5);
     }
   }
 
   // _loop function - check for, and process, received data from RF24, and send any
   // updates that are due.
   void _loop(unsigned long currentMicros) override {
+
+    // Perform cyclic netdriver functions, including switching back to receive mode 
+    //  (for half-duplex network drivers) and receiving input packets.
+    _netDriver->loop();
 
     // Check for incoming data
     if (_netDriver->available())
@@ -271,18 +288,14 @@ protected:
     if (currentMicros - _lastMulticastTime > (1000 * 1000UL)) 
       _updatePending = true;
 
-    // Send out data update broadcasts once every 100ms if there are changes
-    if (currentMicros - _lastExecutionTime > (100 * 1000UL)) {
+    // Send out data update broadcasts once every 20ms if there are changes
+    if (currentMicros - _lastExecutionTime > (20 * 1000UL)) {
       // Broadcast updates to all other nodes.  The preparation is done in a number of 
       // successive calls, and when sendSensorUpdates() returns true it has completed.
       if (sendSensorUpdates()) {
-        _lastExecutionTime = currentMicros; // Send complete, wait another 100ms
+        _lastExecutionTime = currentMicros; // Send complete, wait for next time
       }
     }
-
-    // Perform cyclic netdriver functions, including switching back to receive mode 
-    //  (for half-duplex network drivers).
-    _netDriver->loop();
   }
 
   void _display() override {
@@ -301,8 +314,8 @@ private:
     if (_numPinsToSend == 0) return true; // No pins to send from this node.
 
     // Update the _pinValues bitfield to reflect the current values of local pins.
-    // Process maximum of 16 pins per entry.
-    uint8_t count = 16;
+    // Process maximum of 5 pins per entry.
+    uint8_t count = 5;
     bool state;
     // First time through, _nextSendPin is equal to _firstPinToSend.
     for (int pin=_nextSendPin; pin<_firstPinToSend+_numPinsToSend; pin++) {
@@ -339,20 +352,20 @@ private:
     //  update is due.
     if (_updatePending) { 
       // On master and on slave, send pin states to other nodes
-      netBuffer[0] = _thisNode;  // Originating node
-      netBuffer[1] = NET_CMD_VALUEUPDATE;
+      netBuffer[IONET_SENDNODE] = _thisNode;  // Originating node
+      netBuffer[IONET_CMDTYPE] = NET_CMD_VALUEUPDATE;
       // The packet size is 32 bytes, header is 4 bytes, so 28 bytes of data.
       // We can therefore send up to 224 binary states per packet.
-      int byteCount = _numPinsToSend/8+1;
+      int byteCount = (_numPinsToSend+7)/8;
       VPIN remoteVpin = _firstVpin+_firstPinToSend;
-      netBuffer[2] = getMsb(remoteVpin);
-      netBuffer[3] = getLsb(remoteVpin);
+      netBuffer[IONET_VPIN_H] = getMsb(remoteVpin);
+      netBuffer[IONET_VPIN_L] = getLsb(remoteVpin);
 
       // Copy from pinValues array into buffer.  This is why _firstPinToSend must be a multiple of 8.
-      memcpy(&netBuffer[4], &_pinValues[_firstPinToSend/8], byteCount);
+      memcpy(&netBuffer[IONET_DATA], &_pinValues[_firstPinToSend/8], byteCount);
 
       // Broadcast update
-      _netDriver->sendCommand(255, netBuffer, byteCount + 4);
+      _netDriver->sendCommand(255, netBuffer, IONET_DATA + byteCount);
     
       //DIAG(F("Sent %d bytes: %x %x ..."), byteCount, netBuffer[4], netBuffer[5]);
       _lastMulticastTime = micros();
@@ -373,30 +386,30 @@ private:
   void processReceivedData() {
     // Read packet
     uint8_t size = _netDriver->read(netBuffer, sizeof(netBuffer));
-    if (size < 4) return; // packet too short.
+    if (size < IONET_DATA) return; // packet too short.
     // Extract command type from packet.
-    uint8_t command = netBuffer[1];
+    uint8_t command = netBuffer[IONET_CMDTYPE];
     //DIAG(F("Received %d bytes, type=%d"), size, command);
     // Process received data 
     switch (command) {
       case NET_CMD_WRITE: // Digital write command
         {
-          uint8_t targetNode = netBuffer[0];
-          if (targetNode == _thisNode && size >= 5) {
-            VPIN vpin = makeWord(netBuffer[2], netBuffer[3]);
-            uint8_t state = netBuffer[4];
+          uint8_t targetNode = netBuffer[IONET_DESTNODE];
+          if (targetNode == _thisNode && size == IONET_DATA+1) {
+            VPIN vpin = makeWord(netBuffer[IONET_VPIN_H], netBuffer[IONET_VPIN_L]);
+            uint8_t state = netBuffer[IONET_DATA];
             IODevice::write(vpin, state); 
           }
         }
         break;
       case NET_CMD_WRITEANALOGUE:  // Analogue write command
         {
-          uint8_t targetNode = netBuffer[0];
-          if (targetNode == _thisNode && size >= 9) {
-            VPIN vpin = makeWord(netBuffer[2], netBuffer[3]);
-            int value = makeWord(netBuffer[4], netBuffer[5]);
-            uint8_t param1 = netBuffer[6];
-            uint16_t param2 = makeWord(netBuffer[7], netBuffer[8]);
+          uint8_t targetNode = netBuffer[IONET_DESTNODE];
+          if (targetNode == _thisNode && size == IONET_DATA+5) {
+            VPIN vpin = makeWord(netBuffer[IONET_VPIN_H], netBuffer[IONET_VPIN_L]);
+            int value = makeWord(netBuffer[IONET_DATA], netBuffer[IONET_DATA+1]);
+            uint8_t param1 = netBuffer[IONET_DATA+2];
+            uint16_t param2 = makeWord(netBuffer[IONET_DATA+3], netBuffer[IONET_DATA+4]);
             IODevice::writeAnalogue(vpin, value, param1, param2);
             // Set the local value for the pin, used by isBusy(),
             // and subsequently updated by the remote node.
@@ -406,34 +419,34 @@ private:
         break;
       case NET_CMD_VALUEUPDATE: // Updates of input states (sensors etc).
         {
-          uint8_t sendingNode = netBuffer[0];
-          //DIAG(F("Node %d Rx States %x"), sendingNode, netBuffer[4]);
-          VPIN vpin = makeWord(netBuffer[2], netBuffer[3]);
+          uint8_t sendingNode = netBuffer[IONET_SENDNODE];
+          VPIN vpin = makeWord(netBuffer[IONET_VPIN_H], netBuffer[IONET_VPIN_L]);
+          //DIAG(F("Node %d Size %d VPIN %d Rx States %x"), sendingNode, size, vpin, netBuffer[IONET_DATA]);
 
           // Read through the buffer one byte at a time.
-          uint8_t *buffPtr = &netBuffer[4];
+          uint8_t *buffPtr = &netBuffer[IONET_DATA];
           uint8_t *bitFieldPtr = &_pinValues[(vpin-_firstVpin)/8];
 
           int currentPin = vpin - _firstVpin;
           for (int byteNo=0; byteNo<size-4 && currentPin<_nPins; byteNo++) {
-            // Now work through the byte examining each bit.
+            // Now work through the received byte examining each bit.
             uint8_t byteValue = *buffPtr++;
+            uint8_t bitFieldValue = *bitFieldPtr;
             uint8_t bitMask = 1;
             for (int bitNo=0; bitNo<8 && currentPin<_nPins; bitNo++) {
               // Process incoming value if it's come from the pin source node
               uint8_t pinSource = GETFLASH(&_pinDefs[currentPin].node);
               if (sendingNode == pinSource) {
                 if (byteValue & bitMask)
-                  byteValue |= bitMask;
+                  bitFieldValue |= bitMask;
                 else
-                  byteValue &= ~bitMask;
-                // if (pinNode == _thisNode) { // Local pin }
+                  bitFieldValue &= ~bitMask;
               }
               bitMask <<= 1;
               currentPin++;
             }
             // Store the modified byte back
-            *bitFieldPtr++ = byteValue;
+            *bitFieldPtr++ = bitFieldValue;
           }
         }
         break;
